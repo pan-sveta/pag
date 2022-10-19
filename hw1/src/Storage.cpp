@@ -2,15 +2,16 @@
 #include <numeric>
 #include <algorithm>
 #include <iterator>
+#include <queue>
+#include <map>
 
 #include "Utils.h"
 
-typedef vector<pair<int, pair<int, int>>> graphT;
+typedef vector<vector<int>> graph;
 
 int calculateFrankenstein(const vector<int> &wordA, const vector<int> &wordB);
 
-int kruskal(graphT &edges, const size_t& nodesCount);
-
+int kruskal(graph &graph, const size_t& nodesCount);
 
 using namespace std;
 
@@ -19,21 +20,18 @@ int main(int argc, char *argv[]) {
     auto programArguments = ProgramArguments::Parse(argc, argv);
 
     vector<vector<int>> records = readRecords(programArguments.mInputFilePath);
-
     const size_t nodesCount = records.size();
 
     auto start = high_resolution_clock::now();
 
-    #pragma omp declare reduction (merge : graphT : omp_out.insert(omp_out.end(), omp_in.begin(), omp_in.end()))
+    graph graph(nodesCount, vector<int>(nodesCount));
     int i,j;
-    graphT edges;
-    #pragma omp parallel for schedule(static, 1) private(j) reduction(merge: edges)
+    #pragma omp parallel for schedule(static, 1) private(j)
     for (i = 0; i < nodesCount - 1; ++i) {
         for (j = i + 1; j < nodesCount; ++j) {
             int distance = calculateFrankenstein(records[i], records[j]);
-
-            edges.push_back(make_pair(distance, make_pair(i, j)));
-            edges.push_back(make_pair(distance, make_pair(j, i)));
+            graph[i][j] = distance;
+            graph[j][i] = distance;
         }
     }
 
@@ -42,7 +40,7 @@ int main(int argc, char *argv[]) {
 
     cout << durationGraph.count() << " ms to create graph" << endl;
 
-    int treeCost = kruskal(edges, nodesCount);
+    int treeCost = kruskal(graph, nodesCount);
 
     cout << treeCost << endl;
 
@@ -113,26 +111,52 @@ int parent(int x, vector<int>& id)
     return x;
 }
 
-int kruskal(graphT &edges, const size_t& nodesCount) {
-    int minimumCost = 0;
+typedef pair<int, int> weightedEdge;
+int kruskal(graph &graph, const size_t& nodesCount) {
+    priority_queue<weightedEdge, vector <weightedEdge>, greater<>> pq;
 
-    vector<int> id(nodesCount);
-    iota(id.begin(),id.end(),0);
+    int src = 0;
 
-    sort(edges.begin(), edges.end());
+    vector<int> key(nodesCount, INT32_MAX);
+    vector<int> parent(nodesCount, -1);
+    vector<bool> inMST(nodesCount, false);
 
-    for (int i = 0; i < edges.size(); ++i) {
-        int x = edges[i].second.first;
-        int y = edges[i].second.second;
-        int cost = edges[i].first;
+    pq.push(make_pair(0, src));
+    key[src] = 0;
 
-        if (parent(x, id) != parent(y, id)) {
-            minimumCost += cost;
+    while (!pq.empty())
+    {
+        int u = pq.top().second;
+        pq.pop();
 
-            id[parent(x, id)] = id[parent(y, id)];
+        if(inMST[u]){
+            continue;
+        }
+
+        inMST[u] = true;
+
+        for (int v = 0; v < nodesCount; ++v)
+        {
+            if (u == v)
+                continue;
+
+            int weight = graph[u][v];
+
+            if (!inMST[v] && key[v] > weight)
+            {
+                key[v] = weight;
+                pq.push(make_pair(key[v], v));
+                parent[v] = u;
+            }
         }
     }
 
-    return minimumCost;
+    int sum = 0;
+
+    for (int i = 1; i < nodesCount; ++i){
+        sum += graph[parent[i]][i];
+    }
+
+    return sum;
 }
 
