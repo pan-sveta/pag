@@ -7,11 +7,19 @@
 #include <algorithm>
 #include <tuple>
 #include <iostream>
+#include <cmath>
 
 using namespace std;
 using namespace std::chrono;
 
 #define ROOT_PROCESS 0
+
+struct Problem {
+    int width;
+    int height;
+    int rootSize;
+    int slaveSize;
+};
 
 // Spot with permanent temperature on coordinates [x,y].
 struct Spot {
@@ -23,6 +31,10 @@ struct Spot {
         return (mX == b.mX) && (mY == b.mY);
     }
 };
+
+bool compareByY(const Spot &a, const Spot &b) {
+    return a.mY < b.mY;
+}
 
 tuple<int, int, vector<Spot>> readInstance(string instanceFileName) {
     int width, height;
@@ -98,61 +110,147 @@ MPI_Datatype CreateMpiSpotType() {
     return spot_type;
 }
 
-vector<Spot>
-distributeMatrixLines(const vector<Spot> &spots, const vector<int> &linesOnProcessors, const vector<int> &bases,
-                      MPI_Datatype MPI_SPOT_TYPE) {
-    int slaveChunkSize = linesOnProcessors.back();
-    int rootChunkSize = linesOnProcessors[ROOT_PROCESS];
+MPI_Datatype CreateMpiProblemType() {
+    MPI_Datatype problem_type;
+    int lengths[4] = {1, 1, 1, 1};
 
-    // First, we inform the slaves about the chunk size. According to that, slaves will allocate buffers to receive
-    // their chunk of the vector.
-    MPI_Bcast(&slaveChunkSize, 1, MPI_INT, ROOT_PROCESS, MPI_COMM_WORLD);
+    MPI_Aint displacements[4];
+    Problem dummy_problem = {};
+    MPI_Aint base_address;
+    MPI_Get_address(&dummy_problem, &base_address);
+    MPI_Get_address(&dummy_problem.width, &displacements[0]);
+    MPI_Get_address(&dummy_problem.height, &displacements[1]);
+    MPI_Get_address(&dummy_problem.rootSize, &displacements[2]);
+    MPI_Get_address(&dummy_problem.slaveSize, &displacements[3]);
+    displacements[0] = MPI_Aint_diff(displacements[0], base_address);
+    displacements[1] = MPI_Aint_diff(displacements[1], base_address);
+    displacements[2] = MPI_Aint_diff(displacements[2], base_address);
+    displacements[3] = MPI_Aint_diff(displacements[3], base_address);
+    MPI_Datatype types[4] = {MPI_INT, MPI_INT, MPI_INT, MPI_INT};
 
-    // Second, distribute the vector chunks (the first chunk of size rootChunkSize is for the root process).
-    vector<Spot> buf(rootChunkSize);      // Root process will also receive its chunk.
-    MPI_Scatterv(
-            spots.data(),
-            linesOnProcessors.data(),
-            bases.data(),
-            MPI_SPOT_TYPE,
-            buf.data(),
-            rootChunkSize,
-            MPI_SPOT_TYPE,
-            ROOT_PROCESS,
-            MPI_COMM_WORLD);
+    MPI_Type_create_struct(4, lengths, displacements, types, &problem_type);
+    MPI_Type_commit(&problem_type);
 
-    return buf;
+    return problem_type;
 }
 
-vector<Spot> receiveMatrixLines(MPI_Datatype MPI_SPOT_TYPE) {
-    // Get the chunk size.
-    int chunkSize;
-    MPI_Bcast(&chunkSize, 1, MPI_INT, ROOT_PROCESS, MPI_COMM_WORLD);
+vector<Spot> distributeSpots(const vector<vector<Spot>> &chunkedSpots, MPI_Datatype MPI_SPOT_TYPE) {
+    for (int i = 1; i < chunkedSpots.size(); ++i) {
+        int size = chunkedSpots[i].size();
+        MPI_Send(&size, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
 
-    // Get the chunk of the input vector.
-    vector<Spot> buf(chunkSize);
-    MPI_Scatterv(
-            NULL,
-            NULL,
-            NULL,
-            MPI_BYTE,
-            buf.data(),
-            chunkSize,
-            MPI_BYTE,
-            ROOT_PROCESS,
-            MPI_COMM_WORLD);
+        if (size > 0)
+            MPI_Send(&chunkedSpots[i][0],
+                     size,
+                     MPI_SPOT_TYPE,
+                     i,
+                     0,
+                     MPI_COMM_WORLD);
 
-    cout << "NIG: " << buf.size() << endl;
+    }
 
-    return buf;
+    return chunkedSpots[0];
+}
+
+vector<Spot> receiveSpots(MPI_Datatype MPI_SPOT_TYPE) {
+    int size;
+
+    MPI_Recv(&size, 1, MPI_INT, 0, MPI_ANY_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+    if (size < 1)
+        return vector<Spot>(0);
+
+    vector<Spot> spots(size);
+
+    MPI_Recv(&spots[0],
+             size,
+             MPI_SPOT_TYPE,
+             0,
+             MPI_ANY_TAG,
+             MPI_COMM_WORLD,
+             MPI_STATUS_IGNORE);
+
+    return spots;
+}
+
+float calculateIteration(vector<vector<float>> &matrix, vector<Spot> &spots, const Problem &problem) {
+    float diff = 0;
+
+    for (int y = 0; y < matrix.size(); ++y) {
+        for (int x = 0; x < problem.width; ++x) {
+            //TODO: Create something smarter
+            bool isSpot = false;
+            for (auto spot: spots)
+                if (spot.mX == x && spot.mY == y)
+                    isSpot = true;
+            if (isSpot)
+                continue;
+
+            float sum = 0;
+            sum += matrix[x][y];
+
+            float count = 1;
+
+            if (x > 0) {
+                //Left
+                sum += matrix[x - 1][y];
+                count++;
+            }
+            if (y > 0) {
+                //Top TODO
+                sum += matrix[x][y - 1];
+                count++;
+            }
+            if (y > 0 && x < problem.width - 1) {
+                //Top right TODO
+                sum += matrix[x + 1][y - 1];
+                count++;
+            }
+            if (y > 0 && x > 0) {
+                //Top left TODO
+                sum += matrix[x - 1][y - 1];
+                count++;
+            }
+            if (x < problem.width - 1) {
+                //Right
+                sum += matrix[x + 1][y];
+                count++;
+            }
+            if (y < matrix.size() - 1) {
+                //Bottom TODO
+                sum += matrix[x][y + 1];
+                count++;
+            }
+            if (y < matrix.size() - 1 && x < problem.width - 1) {
+                //Bottom right TODO
+                sum += matrix[x + 1][y + 1];
+                count++;
+            }
+            if (y < matrix.size() - 1 && x > 0) {//Bottom left TODO
+                sum += matrix[x - 1][y + 1];
+                count++;
+            }
+
+            float newTemperature = sum / count;
+            diff = max(abs(matrix[x][y] - newTemperature), diff);
+
+            matrix[x][y] = newTemperature;
+        }
+    }
+
+    return diff;
 }
 
 void printMe(const std::vector<Spot> &spots, const int &rank) {
-    cout << "Content of processor with rank " << rank << ": {" << endl;
+    stringstream ss;
+
+    ss << "Content of processor with rank " << rank << ": {" << endl;
     for (auto spot: spots) {
-        cout << "\tX:" << spot.mX << " Y:" << spot.mY << " Temperature:" << spot.mTemperature << endl;
+        ss << "\tX:" << spot.mX << " Y:" << spot.mY << " Temperature:" << spot.mTemperature << endl;
     }
-    cout << "}" << endl;
+    ss << "}" << endl;
+
+    cout << ss.str();
 }
 
 
@@ -186,60 +284,145 @@ int main(int argc, char **argv) {
 
     high_resolution_clock::time_point start = high_resolution_clock::now();
 
-
     //-----------------------\\
     // Insert your code here \\
     //        |  |  |        \\
     //        V  V  V        \\
 
-    auto MPI_SPOT_TYPE = CreateMpiSpotType();;
+    auto MPI_SPOT_TYPE = CreateMpiSpotType();
+    auto MPI_PROBLEM_TYPE = CreateMpiProblemType();
+
+    Problem problem;
 
     if (myRank == ROOT_PROCESS) {
-        cout << "I am šéfis" << endl;
-        //Calcluate number of lines allocated to processors
-        int linesSlave = spots.size() / worldSize;
-        int linesRoot = spots.size() - (linesSlave * (worldSize - 1));
+        problem.height = height;
+        problem.width = width;
+        problem.slaveSize = height / worldSize;
+        problem.rootSize = height - (problem.slaveSize * (worldSize - 1));;
+    }
 
-        //Do magic
-        vector<int> linesOnProcessors(worldSize, 0);
-        vector<int> bases(worldSize, 0);
-        for (int i = 0; i < worldSize; i++) {
-            if (i == ROOT_PROCESS) {
-                linesOnProcessors[i] = linesRoot;
-                bases[i] = 0;
-            } else {
-                linesOnProcessors[i] = linesSlave;
-                bases[i] = linesRoot + (i - 1) * linesSlave;
+    MPI_Bcast(&problem, 1, MPI_PROBLEM_TYPE, ROOT_PROCESS, MPI_COMM_WORLD);
+
+    vector<vector<float>> matrix;
+    vector<Spot> assignedSpots;
+    if (myRank == ROOT_PROCESS) {
+        //Calculate spots com
+        std::sort(spots.begin(), spots.end(), compareByY);
+        vector<vector<Spot>> chunkedSpots(worldSize, vector<Spot>());
+
+        int processor = 1;
+        for (auto &spot: spots) {
+            if (spot.mY < problem.rootSize)
+                chunkedSpots[0].push_back(spot);
+            else if (spot.mY) {
+                while (spot.mY >= problem.rootSize + processor * problem.slaveSize) {
+                    processor++;
+                }
+
+                chunkedSpots[processor].push_back(spot);
             }
         }
 
-        vector<Spot> assignedSpots = distributeMatrixLines(spots, linesOnProcessors, bases, MPI_SPOT_TYPE);
+        assignedSpots = distributeSpots(chunkedSpots, MPI_SPOT_TYPE);
         printMe(assignedSpots, myRank);
 
+        //Create matrix
+        matrix = vector<vector<float>>(problem.width, vector<float>(problem.rootSize, 128));
 
+        //Fill spots
+        for (auto spot: assignedSpots) {
+            matrix[spot.mX][spot.mY - (problem.rootSize + (myRank - 1) * problem.slaveSize)] = spot.mTemperature;
+        }
     } else {
-        vector<Spot> assignedSpots = receiveMatrixLines(MPI_SPOT_TYPE);
+        assignedSpots = receiveSpots(MPI_SPOT_TYPE);
         printMe(assignedSpots, myRank);
+
+        matrix = vector<vector<float>>(problem.width, vector<float>(problem.slaveSize, 128));
+
+        for (auto spot: assignedSpots) {
+            matrix[spot.mX][spot.mY - (problem.rootSize + (myRank - 1) * problem.slaveSize)] = spot.mTemperature;
+        }
+    }
+
+    float maxDif;
+    do {
+        float myDiff = calculateIteration(matrix, spots, problem);
+        vector<float> diffs(worldSize);
+
+        MPI_Allgather(&myDiff,
+                      1,
+                      MPI_FLOAT,
+                      &diffs[0],
+                      1,
+                      MPI_FLOAT,
+                      MPI_COMM_WORLD);
+
+        maxDif = *max_element(diffs.begin(), diffs.end());
+        cout << "IT MAX DIF: " << maxDif << endl;
+    } while (maxDif >= 0.00001);
+
+    vector<float> message(0);
+    if (myRank != ROOT_PROCESS) {
+        message = vector<float>(problem.width * problem.slaveSize);
+        for (int y = 0; y < problem.slaveSize; ++y) {
+            for (int x = 0; x < problem.width; ++x) {
+                message.push_back(matrix[x][y]);
+            }
+        }
+    }
+
+    vector<float> temperatures;
+    int index = 0;
+
+    if (myRank == ROOT_PROCESS) {
+        temperatures = vector<float>(problem.width * problem.height);
+        for (int y = 0; y < problem.rootSize; ++y) {
+            for (int x = 0; x < problem.width; ++x) {
+                temperatures[index] = matrix[x][y];
+                index++;
+            }
+        }
+    }
+
+    cout << "CPU " << myRank << " MESSAGE SIZE: " << message.size() << " TEMPS: " << temperatures.size() << endl;
+
+    const int bufferSize = problem.width * problem.slaveSize * (worldSize - 1);
+    vector<float> bugg(bufferSize);
+    MPI_Gather(&message[0],
+               message.size(),
+               MPI_FLOAT,
+               &bugg[0],
+               problem.width * problem.slaveSize,
+               MPI_FLOAT,
+               ROOT_PROCESS,
+               MPI_COMM_WORLD
+    );
+
+    for (auto fo: bugg) {
+        cout << fo << ";";
     }
 
 
 
-    // TODO: Fill this array on processor with rank 0. It must have height * width elements and it contains the
-    // linearized matrix of temperatures in row-major order
-    // (see https://en.wikipedia.org/wiki/Row-_and_column-major_order)
-    vector<float> temperatures;
+// TODO: Fill this array on processor with rank 0. It must have height * width elements and it contains the
+// linearized matrix of temperatures in row-major order
+// (see https://en.wikipedia.org/wiki/Row-_and_column-major_order)
 
-    //-----------------------\\
+
+//-----------------------\\
 
     double totalDuration = duration_cast<duration<double>>(high_resolution_clock::now() - start).count();
-    cout << "computational time: " << totalDuration << " s" << endl;
+    /*cout << "computational time: " << totalDuration << " s" <<
+         endl;*/
 
     if (myRank == 0) {
         string outputFileName(argv[2]);
-        writeOutput(myRank, width, height, outputFileName, temperatures);
+        writeOutput(myRank, width, height, outputFileName, temperatures
+        );
     }
 
     MPI_Finalize();
+
     return 0;
 }
 
