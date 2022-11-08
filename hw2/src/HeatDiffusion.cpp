@@ -173,10 +173,84 @@ vector<Spot> receiveSpots(MPI_Datatype MPI_SPOT_TYPE) {
     return spots;
 }
 
-float calculateIteration(vector<vector<float>> &matrix, vector<Spot> &spots, const Problem &problem) {
+float calculateIteration(vector<vector<float>> &matrix, vector<Spot> &spots, const Problem &problem, const int &myRank,
+                         const int &worldSize) {
     float diff = 0;
 
-    for (int y = 0; y < matrix.size(); ++y) {
+    vector<float> lineAfterMine(0);
+    vector<float> lineBeforeMine(0);
+
+    if (myRank + 1 < worldSize) {
+        /*cout << "CPU: " << myRank << " sending my last line to " << myRank + 1 << " receving lineAfterMine from "
+             << myRank + 1 << endl;*/
+        lineAfterMine = vector<float>(problem.width);
+
+        vector<float> lastLine(0);
+        for (auto line: matrix) {
+            lastLine.push_back(line[line.size() - 1]);
+        }
+
+        MPI_Sendrecv(&lastLine[0],
+                     problem.width,
+                     MPI_FLOAT,
+                     myRank + 1,
+                     1,
+                     &lineAfterMine[0],
+                     problem.width,
+                     MPI_FLOAT,
+                     myRank + 1,
+                     2,
+                     MPI_COMM_WORLD,
+                     MPI_STATUS_IGNORE);
+    }
+
+    if (myRank - 1 >= 0) {
+        /*cout << "CPU: " << myRank << " sending my last line to " << myRank - 1 << " receving lineAfterMine from "
+             << myRank - 1 << endl;*/
+        lineBeforeMine = vector<float>(problem.width);
+
+        vector<float> firstLine(0);
+        for (auto line: matrix) {
+            firstLine.push_back(line[0]);
+        }
+
+        MPI_Sendrecv(&firstLine[0],
+                     problem.width,
+                     MPI_FLOAT,
+                     myRank - 1,
+                     2,
+                     &lineBeforeMine[0],
+                     problem.width,
+                     MPI_FLOAT,
+                     myRank - 1,
+                     1,
+                     MPI_COMM_WORLD,
+                     MPI_STATUS_IGNORE);
+    }
+
+
+    /*stringstream ss;
+    ss << "CPU: " << myRank << " - LAM - " << lineAfterMine.size() << " - " << lineAfterMine.empty() << " - ";
+    for (auto foo: lineAfterMine) {
+        ss << foo << ";";
+    }
+    ss << endl;
+    cout << ss.str();
+
+    stringstream ss2;
+    ss2 << "CPU: " << myRank << " - LBM - " << lineBeforeMine.size() << " - " << lineBeforeMine.empty() << " - ";
+    for (auto foo: lineBeforeMine) {
+        ss2 << foo << ";";
+    }
+    ss2 << endl;
+    cout << ss2.str();*/
+
+
+    //cout << "I HAVE SEND AND RECEIVE EVERYTHING!" << endl;
+
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    for (int y = 0; y < matrix[0].size(); ++y) {
         for (int x = 0; x < problem.width; ++x) {
             //TODO: Create something smarter
             bool isSpot = false;
@@ -191,45 +265,74 @@ float calculateIteration(vector<vector<float>> &matrix, vector<Spot> &spots, con
 
             float count = 1;
 
+            //Left
             if (x > 0) {
-                //Left
                 sum += matrix[x - 1][y];
                 count++;
             }
-            if (y > 0) {
-                //Top TODO
-                sum += matrix[x][y - 1];
-                count++;
-            }
-            if (y > 0 && x < problem.width - 1) {
-                //Top right TODO
-                sum += matrix[x + 1][y - 1];
-                count++;
-            }
-            if (y > 0 && x > 0) {
-                //Top left TODO
-                sum += matrix[x - 1][y - 1];
-                count++;
-            }
+
+            //Right
             if (x < problem.width - 1) {
-                //Right
                 sum += matrix[x + 1][y];
                 count++;
             }
-            if (y < matrix.size() - 1) {
-                //Bottom TODO
+
+            //Top
+            if (y > 0) {
+                sum += matrix[x][y - 1];
+                count++;
+            } else if (y == 0 && !lineBeforeMine.empty()) {
+                sum += lineBeforeMine[x];
+                count++;
+            }
+
+            //Top right
+            if (y > 0 && x < problem.width - 1) {
+                sum += matrix[x + 1][y - 1];
+                count++;
+            } else if (y == 0 && x < problem.width - 1 && !lineBeforeMine.empty()) {
+                sum += lineBeforeMine[x + 1];
+                count++;
+            }
+
+            //Top left
+            if (y > 0 && x > 0) {
+                sum += matrix[x - 1][y - 1];
+                count++;
+            } else if (y == 0 && x > 0 && !lineBeforeMine.empty()) {
+                sum += lineBeforeMine[x - 1];
+                count++;
+            }
+
+            //Bottom
+            if (y < matrix[0].size() - 1) {
                 sum += matrix[x][y + 1];
                 count++;
+            } else if (y == matrix[0].size() - 1 && !lineAfterMine.empty()) {
+                sum += lineAfterMine[x];
+                count++;
             }
-            if (y < matrix.size() - 1 && x < problem.width - 1) {
-                //Bottom right TODO
+
+            //Bottom right
+            if (y < matrix[0].size() - 1 && x < problem.width - 1) {
                 sum += matrix[x + 1][y + 1];
                 count++;
-            }
-            if (y < matrix.size() - 1 && x > 0) {//Bottom left TODO
-                sum += matrix[x - 1][y + 1];
+            } else if (y == matrix[0].size() - 1 && x < problem.width - 1 && !lineAfterMine.empty()) {
+                sum += lineAfterMine[x + 1];
                 count++;
             }
+
+            //Bottom left
+            if (y < matrix[0].size() - 1 && x > 0) {
+                sum += matrix[x - 1][y + 1];
+                count++;
+            } else if (y == matrix[0].size() - 1 && x > 0 && !lineAfterMine.empty()) {
+                sum += lineAfterMine[x - 1];
+                count++;
+            }
+
+            /*cout << "X: " << x << "Y: " << y << " CPU: " << myRank << " SUM: " << sum << endl;
+            cout << "X: " << x << "Y: " << y << " CPU: " << myRank << " count: " << count << endl;*/
 
             float newTemperature = sum / count;
             diff = max(abs(matrix[x][y] - newTemperature), diff);
@@ -237,6 +340,8 @@ float calculateIteration(vector<vector<float>> &matrix, vector<Spot> &spots, con
             matrix[x][y] = newTemperature;
         }
     }
+
+    //cout << "diff: " << diff << endl;
 
     return diff;
 }
@@ -346,7 +451,7 @@ int main(int argc, char **argv) {
 
     float maxDif;
     do {
-        float myDiff = calculateIteration(matrix, spots, problem);
+        float myDiff = calculateIteration(matrix, spots, problem, myRank, worldSize);
         vector<float> diffs(worldSize);
 
         MPI_Allgather(&myDiff,
@@ -357,9 +462,17 @@ int main(int argc, char **argv) {
                       MPI_FLOAT,
                       MPI_COMM_WORLD);
 
+        /*for(auto dif :diffs)
+            cout << dif << ";";
+        cout <<endl;*/
+
         maxDif = *max_element(diffs.begin(), diffs.end());
-        cout << "IT MAX DIF: " << maxDif << endl;
+        /*if (myRank == ROOT_PROCESS)
+            cout << "STEP MAX DIF: " << maxDif << endl;*/
     } while (maxDif >= 0.00001);
+
+    cout << "FINAL MAX DIF: " << maxDif << endl;
+    vector<float> temperatures;
 
     vector<float> message(0);
     if (myRank != ROOT_PROCESS) {
@@ -371,7 +484,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    vector<float> temperatures;
+
     int index = 0;
 
     if (myRank == ROOT_PROCESS) {
@@ -384,7 +497,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    cout << "CPU " << myRank << " MESSAGE SIZE: " << message.size() << " TEMPS: " << temperatures.size() << endl;
+   // cout << "CPU " << myRank << " MESSAGE SIZE: " << message.size() << " TEMPS: " << temperatures.size() << endl;
 
     const int bufferSize = problem.width * problem.slaveSize * (worldSize - 1);
     vector<float> bugg(bufferSize);
@@ -398,8 +511,10 @@ int main(int argc, char **argv) {
                MPI_COMM_WORLD
     );
 
+    cout << "DONE";
+
     for (auto fo: bugg) {
-        cout << fo << ";";
+       cout << fo << ";";
     }
 
 
