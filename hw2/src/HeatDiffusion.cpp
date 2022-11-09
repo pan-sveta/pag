@@ -173,7 +173,7 @@ vector<Spot> receiveSpots(MPI_Datatype MPI_SPOT_TYPE) {
     return spots;
 }
 
-float calculateIteration(vector<vector<float>> &matrix, vector<Spot> &spots, const Problem &problem, const int &myRank,
+float calculateIteration(vector<vector<float>> &matrix, const vector<vector<bool>> &isSpot, const Problem &problem, const int &myRank,
                          const int &worldSize) {
     float diff = 0;
 
@@ -185,12 +185,7 @@ float calculateIteration(vector<vector<float>> &matrix, vector<Spot> &spots, con
              << myRank + 1 << endl;*/
         lineAfterMine = vector<float>(problem.width);
 
-        vector<float> lastLine(0);
-        for (auto line: matrix) {
-            lastLine.push_back(line[line.size() - 1]);
-        }
-
-        MPI_Sendrecv(&lastLine[0],
+        MPI_Sendrecv(&matrix[matrix.size() - 1][0],
                      problem.width,
                      MPI_FLOAT,
                      myRank + 1,
@@ -209,12 +204,7 @@ float calculateIteration(vector<vector<float>> &matrix, vector<Spot> &spots, con
              << myRank - 1 << endl;*/
         lineBeforeMine = vector<float>(problem.width);
 
-        vector<float> firstLine(0);
-        for (auto line: matrix) {
-            firstLine.push_back(line[0]);
-        }
-
-        MPI_Sendrecv(&firstLine[0],
+        MPI_Sendrecv(&matrix[0][0],
                      problem.width,
                      MPI_FLOAT,
                      myRank - 1,
@@ -250,36 +240,31 @@ float calculateIteration(vector<vector<float>> &matrix, vector<Spot> &spots, con
 
     MPI_Barrier(MPI_COMM_WORLD);
 
-    for (int y = 0; y < matrix[0].size(); ++y) {
+    for (int y = 0; y < matrix.size(); ++y) {
         for (int x = 0; x < problem.width; ++x) {
-            //TODO: Create something smarter
-            bool isSpot = false;
-            for (auto spot: spots)
-                if (spot.mX == x && spot.mY == y)
-                    isSpot = true;
-            if (isSpot)
+            if (isSpot[y][x])
                 continue;
 
             float sum = 0;
-            sum += matrix[x][y];
+            sum += matrix[y][x];
 
             float count = 1;
 
             //Left
             if (x > 0) {
-                sum += matrix[x - 1][y];
+                sum += matrix[y][x - 1];
                 count++;
             }
 
             //Right
             if (x < problem.width - 1) {
-                sum += matrix[x + 1][y];
+                sum += matrix[y][x + 1];
                 count++;
             }
 
             //Top
             if (y > 0) {
-                sum += matrix[x][y - 1];
+                sum += matrix[y - 1][x];
                 count++;
             } else if (y == 0 && !lineBeforeMine.empty()) {
                 sum += lineBeforeMine[x];
@@ -288,7 +273,7 @@ float calculateIteration(vector<vector<float>> &matrix, vector<Spot> &spots, con
 
             //Top right
             if (y > 0 && x < problem.width - 1) {
-                sum += matrix[x + 1][y - 1];
+                sum += matrix[y - 1][x + 1];
                 count++;
             } else if (y == 0 && x < problem.width - 1 && !lineBeforeMine.empty()) {
                 sum += lineBeforeMine[x + 1];
@@ -297,7 +282,7 @@ float calculateIteration(vector<vector<float>> &matrix, vector<Spot> &spots, con
 
             //Top left
             if (y > 0 && x > 0) {
-                sum += matrix[x - 1][y - 1];
+                sum += matrix[y - 1][x - 1];
                 count++;
             } else if (y == 0 && x > 0 && !lineBeforeMine.empty()) {
                 sum += lineBeforeMine[x - 1];
@@ -305,28 +290,28 @@ float calculateIteration(vector<vector<float>> &matrix, vector<Spot> &spots, con
             }
 
             //Bottom
-            if (y < matrix[0].size() - 1) {
-                sum += matrix[x][y + 1];
+            if (y < matrix.size() - 1) {
+                sum += matrix[y + 1][x];
                 count++;
-            } else if (y == matrix[0].size() - 1 && !lineAfterMine.empty()) {
+            } else if (y == matrix.size() - 1 && !lineAfterMine.empty()) {
                 sum += lineAfterMine[x];
                 count++;
             }
 
             //Bottom right
-            if (y < matrix[0].size() - 1 && x < problem.width - 1) {
-                sum += matrix[x + 1][y + 1];
+            if (y < matrix.size() - 1 && x < problem.width - 1) {
+                sum += matrix[y + 1][x + 1];
                 count++;
-            } else if (y == matrix[0].size() - 1 && x < problem.width - 1 && !lineAfterMine.empty()) {
+            } else if (y == matrix.size() - 1 && x < problem.width - 1 && !lineAfterMine.empty()) {
                 sum += lineAfterMine[x + 1];
                 count++;
             }
 
             //Bottom left
-            if (y < matrix[0].size() - 1 && x > 0) {
-                sum += matrix[x - 1][y + 1];
+            if (y < matrix.size() - 1 && x > 0) {
+                sum += matrix[y + 1][x - 1];
                 count++;
-            } else if (y == matrix[0].size() - 1 && x > 0 && !lineAfterMine.empty()) {
+            } else if (y == matrix.size() - 1 && x > 0 && !lineAfterMine.empty()) {
                 sum += lineAfterMine[x - 1];
                 count++;
             }
@@ -335,9 +320,10 @@ float calculateIteration(vector<vector<float>> &matrix, vector<Spot> &spots, con
             cout << "X: " << x << "Y: " << y << " CPU: " << myRank << " count: " << count << endl;*/
 
             float newTemperature = sum / count;
-            diff = max(abs(matrix[x][y] - newTemperature), diff);
 
-            matrix[x][y] = newTemperature;
+            diff = max(abs(matrix[y][x] - newTemperature), diff);
+
+            matrix[y][x] = newTemperature;
         }
     }
 
@@ -410,6 +396,7 @@ int main(int argc, char **argv) {
 
     vector<vector<float>> matrix;
     vector<Spot> assignedSpots;
+    vector<vector<bool>> isHotspot;
     if (myRank == ROOT_PROCESS) {
         //Calculate spots com
         std::sort(spots.begin(), spots.end(), compareByY);
@@ -432,26 +419,30 @@ int main(int argc, char **argv) {
         printMe(assignedSpots, myRank);
 
         //Create matrix
-        matrix = vector<vector<float>>(problem.width, vector<float>(problem.rootSize, 128));
+        matrix = vector<vector<float>>(problem.rootSize, vector<float>(problem.width, 128));
+        isHotspot = vector<vector<bool>>(problem.rootSize, vector<bool>(problem.width, false));
 
         //Fill spots
         for (auto spot: assignedSpots) {
-            matrix[spot.mX][spot.mY - (problem.rootSize + (myRank - 1) * problem.slaveSize)] = spot.mTemperature;
+            matrix[spot.mY - (problem.rootSize + (myRank - 1) * problem.slaveSize)][spot.mX] = spot.mTemperature;
+            isHotspot[spot.mY - (problem.rootSize + (myRank - 1) * problem.slaveSize)][spot.mX] = true;
         }
     } else {
         assignedSpots = receiveSpots(MPI_SPOT_TYPE);
         printMe(assignedSpots, myRank);
 
-        matrix = vector<vector<float>>(problem.width, vector<float>(problem.slaveSize, 128));
+        matrix = vector<vector<float>>(problem.slaveSize, vector<float>(problem.width, 128));
+        isHotspot = vector<vector<bool>>(problem.slaveSize, vector<bool>(problem.width, false));
 
         for (auto spot: assignedSpots) {
-            matrix[spot.mX][spot.mY - (problem.rootSize + (myRank - 1) * problem.slaveSize)] = spot.mTemperature;
+            matrix[spot.mY - (problem.rootSize + (myRank - 1) * problem.slaveSize)][spot.mX] = spot.mTemperature;
+            isHotspot[spot.mY - (problem.rootSize + (myRank - 1) * problem.slaveSize)][spot.mX] = true;
         }
     }
 
     float maxDif;
     do {
-        float myDiff = calculateIteration(matrix, spots, problem, myRank, worldSize);
+        float myDiff = calculateIteration(matrix, isHotspot, problem, myRank, worldSize);
         vector<float> diffs(worldSize);
 
         MPI_Allgather(&myDiff,
@@ -462,62 +453,72 @@ int main(int argc, char **argv) {
                       MPI_FLOAT,
                       MPI_COMM_WORLD);
 
-        /*for(auto dif :diffs)
-            cout << dif << ";";
-        cout <<endl;*/
-
         maxDif = *max_element(diffs.begin(), diffs.end());
-        /*if (myRank == ROOT_PROCESS)
-            cout << "STEP MAX DIF: " << maxDif << endl;*/
-    } while (maxDif >= 0.00001);
 
-    cout << "FINAL MAX DIF: " << maxDif << endl;
-    vector<float> temperatures;
-
-    vector<float> message(0);
-    if (myRank != ROOT_PROCESS) {
-        message = vector<float>(problem.width * problem.slaveSize);
-        for (int y = 0; y < problem.slaveSize; ++y) {
-            for (int x = 0; x < problem.width; ++x) {
-                message.push_back(matrix[x][y]);
-            }
+        if (myRank == ROOT_PROCESS) {
+            /*for (auto dif: diffs)
+                cout << dif << ";";
+            cout << endl;*/
+            //cout << "STEP MAX DIF: " << maxDif << endl;
         }
-    }
 
+    } while (maxDif >= 0.0001);
 
-    int index = 0;
+    if (myRank == ROOT_PROCESS)
+        cout << "FINAL MAX DIF: " << maxDif << endl;
 
+    vector<float> temperatures(problem.width * problem.height);
+
+    vector<float> message;
     if (myRank == ROOT_PROCESS) {
-        temperatures = vector<float>(problem.width * problem.height);
+        message = vector<float>(problem.width * problem.rootSize);
+        int index = 0;
         for (int y = 0; y < problem.rootSize; ++y) {
             for (int x = 0; x < problem.width; ++x) {
-                temperatures[index] = matrix[x][y];
+                message[index] = matrix[y][x];
+                index++;
+            }
+        }
+    } else {
+        message = vector<float>(problem.width * problem.slaveSize);
+        int index = 0;
+        for (int y = 0; y < problem.slaveSize; ++y) {
+            for (int x = 0; x < problem.width; ++x) {
+                message[index] = matrix[y][x];
                 index++;
             }
         }
     }
 
-   // cout << "CPU " << myRank << " MESSAGE SIZE: " << message.size() << " TEMPS: " << temperatures.size() << endl;
+    cout << "CPU " << myRank << " MESSAGE SIZE: " << message.size() << endl;
 
-    const int bufferSize = problem.width * problem.slaveSize * (worldSize - 1);
-    vector<float> bugg(bufferSize);
+//    if (myRank == 1){
+//        cout << "MESSAGE " << myRank << endl;
+//        for (auto fo: message) {
+//            cout << fo << ";";
+//        }
+//    }
+
+    //vector<float> buff(problem.width * problem.slaveSize * (worldSize));
     MPI_Gather(&message[0],
                message.size(),
                MPI_FLOAT,
-               &bugg[0],
-               problem.width * problem.slaveSize,
+               &temperatures[0],
+               message.size(),
                MPI_FLOAT,
                ROOT_PROCESS,
-               MPI_COMM_WORLD
-    );
+               MPI_COMM_WORLD);
 
-    cout << "DONE";
+    MPI_Barrier(MPI_COMM_WORLD);
 
-    for (auto fo: bugg) {
-       cout << fo << ";";
-    }
+    /*if (myRank == ROOT_PROCESS) {
+        if (myRank == ROOT_PROCESS)
+            for (auto fo: temperatures) {
+                cout << fo << ";";
+            }
+    }*/
 
-
+    //cout << "DONE";
 
 // TODO: Fill this array on processor with rank 0. It must have height * width elements and it contains the
 // linearized matrix of temperatures in row-major order
@@ -527,8 +528,7 @@ int main(int argc, char **argv) {
 //-----------------------\\
 
     double totalDuration = duration_cast<duration<double>>(high_resolution_clock::now() - start).count();
-    /*cout << "computational time: " << totalDuration << " s" <<
-         endl;*/
+    cout << "computational time: " << totalDuration << " s" <<   endl;
 
     if (myRank == 0) {
         string outputFileName(argv[2]);

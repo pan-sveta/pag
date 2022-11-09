@@ -5,7 +5,7 @@ find_package(MPI)
 include_directories(${MPI_INCLUDE_PATH})
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Ofast -std=c++17 -march=native")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Og -std=c++17 -march=native")
 endif()
 
 add_executable(HeatDiffusion ../src/HeatDiffusion.cpp)
