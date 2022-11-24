@@ -18,6 +18,8 @@ void SendInitialTask(const int& destination, const int &taskId);
 
 void SendSchedule(const int& destination, const std::vector<int> &schedule);
 
+void PassToken(const int& destination, int token);
+
 std::vector<int> ReceiveSchedule();
 
 

@@ -17,21 +17,22 @@ void Worker::InitialTasksDistribution(const std::string &path) {
     //Load the instance on root CPU
     if (myRank == 0) {
         tasks = LoadInstance(path);
-        task_count = tasks.size();
+        taskCount = tasks.size();
     }
+
     //Broadcast the number of tasks
-    MPI_Bcast(&task_count, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&taskCount, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
     //If not root -> allocate the task buffer size
     if (myRank != 0)
-        tasks = TaskList(task_count);
+        tasks = TaskList(taskCount);
 
     //Broadcast all tasks
     MPI_Bcast(&tasks[0], tasks.size(), MPITaskType, 0, MPI_COMM_WORLD);
 }
 
 void Worker::InitialJobDistribution() {
-    for (int i = 0; i < task_count; ++i) {
+    for (int i = 0; i < taskCount; ++i) {
         int destination = i % worldSize;
 
         if (destination != 0) {
@@ -46,17 +47,51 @@ void Worker::InitialJobDistribution() {
 
 
 void Worker::WorkingLoop() {
+    bool hasWorked = false;
+
     while (true) {
         if (backlog.empty()) {
+            //Idling
             auto receivedSchedule = ReceiveSchedule();
             Schedule schedule(tasks, receivedSchedule);
-            schedule.print(myRank);
+            backlog.push(schedule);
+        } else {
+            //Working
+            hasWorked = true;
+            Schedule top = backlog.top();
+            backlog.pop();
+
+            ProcessSchedule(top);
         }
 
-        auto top = backlog.top();
-        backlog.pop();
+    }
+}
 
+void Worker::ProcessSchedule(const Schedule &schedule) {
+    std::cout << "Proccessing... ";
+    schedule.print(myRank);
 
+    if (schedule.validate(UB)) {
+        if (schedule.isSolution()) {
+            //I have a solution
+            if (schedule.getLength() < UB){
+                UB = schedule.getLength();
+                std::cout << "New UB discovered: " << UB << std::endl;
+                //TODO: Broadcast
+            }
+
+            std::cout << "Solution: ";
+            schedule.print(myRank);
+            return;
+        } else {
+            //I have to reverse iterate it because of the stack
+            auto notScheduled = schedule.getNotScheduled();
+            for (int i = notScheduled.size() - 1; i > -1; --i) {
+                backlog.push(Schedule(schedule, notScheduled[i]));
+            }
+        }
+    } else {
+        //std::cout << "INVALID!" << std::endl;
     }
 }
 

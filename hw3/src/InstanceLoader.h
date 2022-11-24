@@ -5,6 +5,7 @@
 #include <cstring>
 
 struct Task {
+    int n;
     int processTime;
     int releaseTime;
     int deadline;

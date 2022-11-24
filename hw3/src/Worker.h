@@ -14,7 +14,8 @@ private:
     std::stack<Schedule> backlog;
     int myRank;
     int worldSize;
-    int task_count;
+    int taskCount;
+    int UB = INT32_MAX;
     TaskList tasks;
 public:
     Worker(const int &myRankInput, const int &worldSizeInput);
@@ -24,6 +25,8 @@ public:
     void InitialJobDistribution();
 
     void InitialTasksDistribution(const std::string& path);
+
+    void ProcessSchedule(const Schedule &schedule);
 };
 
 

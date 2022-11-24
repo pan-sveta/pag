@@ -10,26 +10,23 @@
 TaskList LoadInstance(const std::string &path) {
     std::vector<Task> tasks(0);
 
-    std::ifstream inputFile;
-    inputFile.open(path);
+    FILE * finput;
+    finput = fopen(path.c_str(), "r");
 
-    if (!inputFile) {
+    if (!finput) {
         std::cerr << "Input file not found!";
     }
 
-    std::string line;
-
-    std::getline(inputFile, line);
-    int taskCount = std::stoi(line);
+    int taskCount;
+    fscanf(finput, "%d", &taskCount );
 
     for (int i = 0; i < taskCount; ++i) {
-        std::getline(inputFile, line);
-        std::stringstream ss(line);
 
         int p, r, d;
-        ss >> p >> r >> d;
+        fscanf(finput, "%d %d %d", &p,&r,&d);
 
         Task task{
+                .n = i,
                 .processTime = p,
                 .releaseTime= r,
                 .deadline = d
