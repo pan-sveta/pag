@@ -67,7 +67,8 @@ void Worker::Work() {
     MPI_Request request;
     int ubc = UB;
     //TODO: CHECK
-    MPI_Iallreduce(&ubc, &UB, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD, &request);
+    //MPI_Allreduce(&ubc, &UB, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+    //std::cout << "WORKING" << std::endl;
 
     //Working
     Schedule top = backlog.top();
@@ -87,8 +88,8 @@ void Worker::ProcessSchedule(const Schedule &schedule) {
                 UB = schedule.getLength();
                 bestSchedule = schedule;
 
-                std::cout << "New solution discovered with ub: " << UB << std::endl;
-                schedule.print(myRank);
+                //std::cout << "New solution discovered with ub: " << UB << std::endl;
+                //schedule.print(myRank);
             }
 
         } else {
@@ -177,38 +178,41 @@ void Worker::HandleTokenReceive() {
 void Worker::HandleScheduleReceive() {
     auto schedule = ReceiveSchedule(tasks);
 
-
-    std::cout << "RECEIVED:: On CPU " << myRank << " received ";
-    schedule.print(myRank);
+    //std::cout << "RECEIVED:: On CPU " << myRank << " received ";
+    //schedule.print(myRank);
 
     backlog.push(schedule);
 }
 
 void Worker::HandleEnd() {
-    std::cout << "DYING:: On CPU " << myRank << " received" << std::endl;
+    //std::cout << "DYING:: On CPU " << myRank << " received" << std::endl;
     MPI_Request request;
 
-
+    //If not root and has some solution -> send it to root
     if (myRank != 0)
         if (bestSchedule)
             SendSchedule(0, bestSchedule.value());
         else
             MPI_Isend(nullptr, 0, MPI_INT, 0, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD, &request);
-    else {
+    else { // On root
         std::vector<Schedule> results(0);
 
+        //Apend root's solution
         if (bestSchedule)
             results.push_back(bestSchedule.value());
 
+        //Receive solution from everybody
         for (int source = 1; source < worldSize; ++source) {
             MPI_Status status;
             int number_amount;
             MPI_Probe(source, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD, &status);
             MPI_Get_count(&status, MPI_INT, &number_amount);
 
+            //If it is empty pass
             if (number_amount < 1)
                 continue;
 
+            //If not empty decode
             std::vector<int> message(number_amount);
             MPI_Recv(&message[0], number_amount, MPI_INT, status.MPI_SOURCE, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD,
                      &status);
@@ -230,23 +234,25 @@ void Worker::HandleEnd() {
         }
 
 
+        //If results not empty process them to feasible solution
         if(!results.empty()){
-            int index = 0;
-            int len = results[0].getLength();
+            //Find the one with smallest length
+            int smallestIndex = 0;
+            int smallestLength = results[0].getLength();
             for (int i = 1; i < results.size(); ++i) {
-                if (results[i].getLength() < len) {
-                    index = i;
-                    len = results[i].getLength();
+                if (results[i].getLength() < smallestLength) {
+                    smallestIndex = i;
+                    smallestLength = results[i].getLength();
                 }
             }
 
-            std::cout << "FINAL RESULTS:" << std::endl;
-            results[index].print(myRank);
+            std::cout << "Final result" << std::endl;
+            results[smallestIndex].print(myRank);
 
             std::vector<int> orda(taskCount, -69);
 
             int foreo = 0;
-            for (auto task: results[index].getScheduled()) {
+            for (auto task: results[smallestIndex].getScheduled()) {
                 orda[task->n] = foreo;
                 foreo += task->processTime;
             }
@@ -254,7 +260,7 @@ void Worker::HandleEnd() {
             writeFeasible(outputPath, orda);
 
         } else{
-            std::cout << "INFESABLE" << std::endl;
+            std::cout << "Infeasible" << std::endl;
             writeInfeasible(outputPath);
         }
 
