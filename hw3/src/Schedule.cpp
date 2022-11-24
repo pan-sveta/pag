@@ -67,6 +67,10 @@ Schedule::Schedule(const Schedule &_schedule, const Task *_task) {
     length = calculateLength();
 }
 
+std::vector<const Task *> Schedule::getScheduled() const {
+    return scheduled;
+}
+
 std::vector<const Task *> Schedule::getNotScheduled() const {
     return notScheduled;
 }

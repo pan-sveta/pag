@@ -21,6 +21,7 @@ private:
 
 
 public:
+    Schedule(): length(0){};
     Schedule(const TaskList &_taskList, int initialTask);
 
     Schedule(const TaskList &_taskList, const std::vector<int> &_scheduled, const std::vector<int> &_notScheduled);
@@ -33,6 +34,7 @@ public:
 
     void print(const int &myRank) const;
 
+    std::vector<const Task *> getScheduled() const;
     std::vector<const Task *> getNotScheduled() const;
 
     std::vector<int> getScheduledIndex() const;

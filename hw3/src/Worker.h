@@ -9,6 +9,7 @@
 #include <stack>
 #include "Schedule.h"
 #include "Comm.h"
+#include <optional>
 
 class Worker {
 private:
@@ -16,17 +17,20 @@ private:
     int myRank;
     int worldSize;
     int taskCount;
-    int UB = INT32_MAX;
     TaskList tasks;
     bool cpuAlive = true;
-    std::vector<int> bestSolution;
+
+    std::string outputPath;
+
+    int UB = INT32_MAX;
+    std::optional<Schedule> bestSchedule;
 
 public:
     int token = NO_TOKEN;
     bool isRed = false;
     bool isGreen = false;
 
-    Worker(const int &myRankInput, const int &worldSizeInput);
+    Worker(const int &myRankInput, const int &worldSizeInput, const std::string& outputPath);
 
     void WorkingLoop();
 

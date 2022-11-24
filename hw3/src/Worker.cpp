@@ -6,9 +6,10 @@
 #include "Worker.h"
 #include "Comm.h"
 
-Worker::Worker(const int &myRankInput, const int &worldSizeInput) {
+Worker::Worker(const int &myRankInput, const int &worldSizeInput, const std::string& outputPath) {
     this->worldSize = worldSizeInput;
     this->myRank = myRankInput;
+    this->outputPath = outputPath;
 }
 
 void Worker::InitialTasksDistribution(const std::string &path) {
@@ -23,8 +24,6 @@ void Worker::InitialTasksDistribution(const std::string &path) {
 
     //Broadcast the number of tasks
     MPI_Bcast(&taskCount, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
-    bestSolution = std::vector<int>(taskCount, -1);
 
     //If not root -> allocate the task buffer size
     if (myRank != 0)
@@ -86,10 +85,10 @@ void Worker::ProcessSchedule(const Schedule &schedule) {
             //I have a solution
             if (schedule.getLength() < UB) {
                 UB = schedule.getLength();
-                //std::cout << "New solution discovered with ub: " << UB << std::endl;
+                bestSchedule = schedule;
+
+                std::cout << "New solution discovered with ub: " << UB << std::endl;
                 schedule.print(myRank);
-                bestSolution = schedule.getScheduledIndex();
-                //TODO: Broadcast
             }
 
         } else {
@@ -187,27 +186,79 @@ void Worker::HandleScheduleReceive() {
 
 void Worker::HandleEnd() {
     std::cout << "DYING:: On CPU " << myRank << " received" << std::endl;
+    MPI_Request request;
+
 
     if (myRank != 0)
-        MPI_Send(&bestSolution[0], taskCount, MPI_INT, 0, 23, MPI_COMM_WORLD);
+        if (bestSchedule)
+            SendSchedule(0, bestSchedule.value());
+        else
+            MPI_Isend(nullptr, 0, MPI_INT, 0, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD, &request);
     else {
-        std::vector<std::vector<int>> bufik(worldSize, std::vector<int>(taskCount, -2));
-        bufik[0] = bestSolution;
-        MPI_Status status;
+        std::vector<Schedule> results(0);
 
-        for (int i = 1; i < worldSize; ++i) {
-            MPI_Recv(&bufik[i][0], taskCount, MPI_INT, i, 23, MPI_COMM_WORLD, &status);
-        }
+        if (bestSchedule)
+            results.push_back(bestSchedule.value());
 
-        int ind = 0;
-        for (const std::vector<int> &cpu: bufik) {
-            std::cout << "CPU " << ind << ": ";
-            for (int task: cpu) {
-                std::cout << "T" << task + 1 << " ";
+        for (int source = 1; source < worldSize; ++source) {
+            MPI_Status status;
+            int number_amount;
+            MPI_Probe(source, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD, &status);
+            MPI_Get_count(&status, MPI_INT, &number_amount);
+
+            if (number_amount < 1)
+                continue;
+
+            std::vector<int> message(number_amount);
+            MPI_Recv(&message[0], number_amount, MPI_INT, status.MPI_SOURCE, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD,
+                     &status);
+
+            std::vector<int> S;
+            std::vector<int> N;
+
+            bool flag = false;
+            for (auto part: message) {
+                if (part == -1)
+                    flag = true;
+                else if (!flag)
+                    S.push_back(part);
+                else
+                    N.push_back(part);
             }
-            std::cout << std::endl;
-            ind++;
+
+            results.emplace_back(tasks, S, N);
         }
+
+
+        if(!results.empty()){
+            int index = 0;
+            int len = results[0].getLength();
+            for (int i = 1; i < results.size(); ++i) {
+                if (results[i].getLength() < len) {
+                    index = i;
+                    len = results[i].getLength();
+                }
+            }
+
+            std::cout << "FINAL RESULTS:" << std::endl;
+            results[index].print(myRank);
+
+            std::vector<int> orda(taskCount, -69);
+
+            int foreo = 0;
+            for (auto task: results[index].getScheduled()) {
+                orda[task->n] = foreo;
+                foreo += task->processTime;
+            }
+
+            writeFeasible(outputPath, orda);
+
+        } else{
+            std::cout << "INFESABLE" << std::endl;
+            writeInfeasible(outputPath);
+        }
+
+
     }
 
     cpuAlive = false;

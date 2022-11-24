@@ -10,7 +10,7 @@
 TaskList LoadInstance(const std::string &path) {
     std::vector<Task> tasks(0);
 
-    FILE * finput;
+    FILE *finput;
     finput = fopen(path.c_str(), "r");
 
     if (!finput) {
@@ -18,12 +18,12 @@ TaskList LoadInstance(const std::string &path) {
     }
 
     int taskCount;
-    fscanf(finput, "%d", &taskCount );
+    fscanf(finput, "%d", &taskCount);
 
     for (int i = 0; i < taskCount; ++i) {
 
         int p, r, d;
-        fscanf(finput, "%d %d %d", &p,&r,&d);
+        fscanf(finput, "%d %d %d", &p, &r, &d);
 
         Task task{
                 .n = i,
@@ -36,4 +36,21 @@ TaskList LoadInstance(const std::string &path) {
     }
 
     return tasks;
+}
+
+void writeInfeasible(const std::string &path) {
+    FILE *finput;
+    finput = fopen(path.c_str(), "w");
+
+    fprintf(finput, "%d", -1);
+
+}
+
+void writeFeasible(const std::string &path, std::vector<int> list) {
+    FILE *finput;
+    finput = fopen(path.c_str(), "w");
+
+    for (auto el: list) {
+        fprintf(finput, "%d\n", el);
+    }
 }

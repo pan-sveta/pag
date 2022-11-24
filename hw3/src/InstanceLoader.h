@@ -14,3 +14,5 @@ struct Task {
 typedef std::vector<Task> TaskList;
 
 TaskList LoadInstance(const std::string& path);
+void writeInfeasible(const std::string& path);
+void writeFeasible(const std::string& path, std::vector<int> list);
