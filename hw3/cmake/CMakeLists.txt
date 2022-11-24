@@ -8,6 +8,6 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Og -std=c++17 -march=native")
 endif()
 
-add_executable(HW3 ../src/main.cpp ../src/InstanceLoader.cpp ../src/InstanceLoader.h)
+add_executable(HW3 ../src/main.cpp ../src/InstanceLoader.cpp ../src/InstanceLoader.h ../src/Comm.cpp ../src/Comm.h ../src/Worker.cpp ../src/Worker.h ../src/Schedule.cpp ../src/Schedule.h)
 target_compile_options(HW3 PRIVATE ${MPI_CXX_COMPILE_FLAGS})
 target_link_libraries(HW3 ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})

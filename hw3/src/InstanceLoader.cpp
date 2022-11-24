@@ -4,10 +4,11 @@
 #include <iostream>
 #include <cstring>
 #include <sstream>
+#include <mpi.h>
 #include "InstanceLoader.h"
 
-Instance LoadInstance(const std::string &path) {
-    Instance instance;
+TaskList LoadInstance(const std::string &path) {
+    std::vector<Task> tasks(0);
 
     std::ifstream inputFile;
     inputFile.open(path);
@@ -19,10 +20,9 @@ Instance LoadInstance(const std::string &path) {
     std::string line;
 
     std::getline(inputFile, line);
-    instance.taskCount = std::stoi(line);
-    instance.tasks = std::vector<Task>(0);
+    int taskCount = std::stoi(line);
 
-    for (int i = 0; i < instance.taskCount; ++i) {
+    for (int i = 0; i < taskCount; ++i) {
         std::getline(inputFile, line);
         std::stringstream ss(line);
 
@@ -30,14 +30,13 @@ Instance LoadInstance(const std::string &path) {
         ss >> p >> r >> d;
 
         Task task{
-                p = p,
-                r = r,
-                d = d
+                .processTime = p,
+                .releaseTime= r,
+                .deadline = d
         };
 
-        instance.tasks.push_back(task);
+        tasks.push_back(task);
     }
 
-    return instance;
+    return tasks;
 }
-

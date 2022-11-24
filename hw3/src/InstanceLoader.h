@@ -5,15 +5,11 @@
 #include <cstring>
 
 struct Task {
-    int p;
-    int r;
-    int d;
+    int processTime;
+    int releaseTime;
+    int deadline;
 };
 
-struct Instance {
-    int taskCount;
-    std::vector<Task> tasks;
+typedef std::vector<Task> TaskList;
 
-};
-
-Instance LoadInstance(const std::string& path);
+TaskList LoadInstance(const std::string& path);
