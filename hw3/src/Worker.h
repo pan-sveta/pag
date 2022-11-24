@@ -19,6 +19,7 @@ private:
     int UB = INT32_MAX;
     TaskList tasks;
     bool cpuAlive = true;
+    std::vector<int> bestSolution;
 
 public:
     int token = NO_TOKEN;

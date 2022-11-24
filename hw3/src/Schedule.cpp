@@ -113,5 +113,15 @@ bool Schedule::isSolution() const {
     return notScheduled.empty();
 }
 
+std::vector<int> Schedule::getVector() const {
+    std::vector<int> vec;
+
+    for (auto task: scheduled) {
+        vec.push_back(task->n);
+    }
+
+    return vec;
+}
+
 
 

@@ -35,6 +35,7 @@ public:
     void print(const int &myRank) const;
 
 
+    std::vector<int> getVector() const;
 };
 
 

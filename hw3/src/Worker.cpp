@@ -23,6 +23,8 @@ void Worker::InitialTasksDistribution(const std::string &path) {
     //Broadcast the number of tasks
     MPI_Bcast(&taskCount, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
+    bestSolution = std::vector<int>(taskCount, -1);
+
     //If not root -> allocate the task buffer size
     if (myRank != 0)
         tasks = TaskList(taskCount);
@@ -60,6 +62,11 @@ void Worker::WorkingLoop() {
 }
 
 void Worker::Work() {
+    MPI_Request request;
+    int ubc = UB;
+    //TODO: CHECK
+    MPI_Iallreduce(&ubc, &UB, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD, &request);
+
     //Working
     Schedule top = backlog.top();
     backlog.pop();
@@ -76,13 +83,12 @@ void Worker::ProcessSchedule(const Schedule &schedule) {
             //I have a solution
             if (schedule.getLength() < UB) {
                 UB = schedule.getLength();
-                //std::cout << "New UB discovered: " << UB << std::endl;
+                //std::cout << "New solution discovered with ub: " << UB << std::endl;
+                schedule.print(myRank);
+                bestSolution = schedule.getVector();
                 //TODO: Broadcast
             }
 
-            std::cout << "Solution: ";
-            schedule.print(myRank);
-            return;
         } else {
             //I have to reverse iterate it because of the stack
             auto notScheduled = schedule.getNotScheduled();
@@ -179,6 +185,29 @@ void Worker::HandleScheduleReceive() {
 
 void Worker::HandleEnd() {
     std::cout << "DYING:: On CPU " << myRank << " received" << std::endl;
+
+    if (myRank != 0)
+        MPI_Send(&bestSolution[0], taskCount, MPI_INT, 0, 23, MPI_COMM_WORLD);
+    else {
+        std::vector<std::vector<int>> bufik(worldSize, std::vector<int>(taskCount,-2));
+        bufik[0] = bestSolution;
+        MPI_Status status;
+
+        for (int i = 1; i < worldSize; ++i) {
+            MPI_Recv(&bufik[i][0], taskCount,MPI_INT,i,23, MPI_COMM_WORLD,&status);
+        }
+
+        int ind = 0;
+        for (const std::vector<int>& cpu : bufik) {
+            std::cout << "CPU " << ind << ": ";
+            for (int task : cpu) {
+                std::cout << "T" << task+1 << " ";
+            }
+            std::cout << std::endl;
+            ind++;
+        }
+    }
+
     cpuAlive = false;
 }
 
