@@ -5,7 +5,8 @@
 #include <mpi.h>
 #include "Comm.h"
 
-#include "InstanceLoader.h"
+#include "Schedule.h"
+
 
 MPI_Datatype CreateMpiTaskType() {
     MPI_Datatype task_type;
@@ -31,45 +32,52 @@ MPI_Datatype CreateMpiTaskType() {
     return task_type;
 }
 
-void SendInitialTask(const int &destination, const int &taskId) {
+void SendSchedule(const int &destination, const Schedule& schedule) {
     MPI_Request request;
-    MPI_Isend(&taskId, 1, MPI_INT, destination, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD, &request);
+
+    std::vector<int> message;
+
+    for (auto task : schedule.getScheduledIndex())
+        message.push_back(task);
+
+    message.push_back(-1);
+
+    for (auto task : schedule.getNotScheduledIndex())
+        message.push_back(task);
+
+    MPI_Isend(&message[0], message.size() , MPI_INT, destination, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD, &request);
 }
 
-void SendSchedule(const int &destination, const std::vector<int> &schedule) {
-    MPI_Request request;
-    MPI_Isend(&schedule, schedule.size(), MPI_INT, destination, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD, &request);
-}
 
-bool IsScheduleAvailable() {
-    MPI_Status status;
-    int flag;
-    MPI_Iprobe(MPI_ANY_SOURCE, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD, &flag, &status);
-
-
-    if (flag)
-        return true;
-    else
-        return false;
-}
-
-std::vector<int> ReceiveSchedule() {
-
-    //TODO Make non-blocking
+Schedule ReceiveSchedule(const TaskList &taskList) {
     MPI_Status status;
     int number_amount;
+
+
     MPI_Probe(MPI_ANY_SOURCE, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD, &status);
     MPI_Get_count(&status, MPI_INT, &number_amount);
-    std::vector<int> buffer(number_amount, -1);
+    std::vector<int> message(number_amount);
+    MPI_Recv(&message[0], number_amount , MPI_INT, status.MPI_SOURCE, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD, &status);
 
-    MPI_Recv(&buffer[0], number_amount, MPI_INT, MPI_ANY_SOURCE, MYTAG_SCHEDULE_SEND,
-             MPI_COMM_WORLD, &status);
+    std::vector<int> S;
+    std::vector<int> N;
 
-    return buffer;
+    bool flag = false;
+    for (auto part : message) {
+        if (part == -1)
+            flag = true;
+        else if(!flag)
+            S.push_back(part);
+        else
+            N.push_back(part);
+    }
+
+    return Schedule(taskList,S,N);
 }
 
 void PassToken(const int &destination, int token) {
     MPI_Send(&token, 1, MPI_INT, destination, MYTAG_TOKEN_PASSING, MPI_COMM_WORLD);
 }
+
 
 

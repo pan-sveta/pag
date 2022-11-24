@@ -18,6 +18,7 @@ int main(int argc, char **argv) {
     worker.InitialTasksDistribution(inputPath);
 
 
+
     //Assign initial jobs
     if (myRank == 0) {
         worker.InitialJobDistribution();

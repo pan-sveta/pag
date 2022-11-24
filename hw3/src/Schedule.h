@@ -11,31 +11,37 @@
 
 class Schedule {
 private:
+
+
     std::vector<const Task *> scheduled;
     std::vector<const Task *> notScheduled;
     int length;
-    int UB = -1;
 
     int calculateLength();
 
 
 public:
-    explicit Schedule(const TaskList &_taskList);
+    Schedule(const TaskList &_taskList, int initialTask);
 
-    Schedule(const TaskList &_taskList, const std::vector<int> &initialState);;
+    Schedule(const TaskList &_taskList, const std::vector<int> &_scheduled, const std::vector<int> &_notScheduled);
 
     Schedule(const Schedule &_schedule, const Task *_task);
 
-    int getLength() const;
-    std::vector<const Task *> getNotScheduled() const;
     bool isSolution() const;
 
-    bool validate(const int& UB) const;
+    bool validate(const int &UB) const;
 
     void print(const int &myRank) const;
 
+    std::vector<const Task *> getNotScheduled() const;
 
-    std::vector<int> getVector() const;
+    std::vector<int> getScheduledIndex() const;
+
+    std::vector<int> getNotScheduledIndex() const;
+
+    int getLength() const;
+
+
 };
 
 

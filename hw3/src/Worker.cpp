@@ -20,6 +20,7 @@ void Worker::InitialTasksDistribution(const std::string &path) {
         taskCount = tasks.size();
     }
 
+
     //Broadcast the number of tasks
     MPI_Bcast(&taskCount, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
@@ -34,17 +35,19 @@ void Worker::InitialTasksDistribution(const std::string &path) {
 }
 
 void Worker::InitialJobDistribution() {
+
     for (int i = 0; i < taskCount; ++i) {
         int destination = i % worldSize;
 
         /*
         SendInitialTask(destination, i);*/
 
+
+        Schedule schedule(tasks, i);
+
         if (destination != 0) {
-            SendInitialTask(destination, i);
+            SendSchedule(destination, schedule);
         } else {
-            std::vector<int> sch(1, i);
-            Schedule schedule(tasks, sch);
             backlog.push(schedule);
         }
     }
@@ -85,7 +88,7 @@ void Worker::ProcessSchedule(const Schedule &schedule) {
                 UB = schedule.getLength();
                 //std::cout << "New solution discovered with ub: " << UB << std::endl;
                 schedule.print(myRank);
-                bestSolution = schedule.getVector();
+                bestSolution = schedule.getScheduledIndex();
                 //TODO: Broadcast
             }
 
@@ -173,12 +176,11 @@ void Worker::HandleTokenReceive() {
 }
 
 void Worker::HandleScheduleReceive() {
-    auto receivedSchedule = ReceiveSchedule();
+    auto schedule = ReceiveSchedule(tasks);
 
-    Schedule schedule(tasks, receivedSchedule);
 
-    //std::cout << "RECEIVED:: On CPU " << myRank << " received ";
-    //schedule.print(myRank);
+    std::cout << "RECEIVED:: On CPU " << myRank << " received ";
+    schedule.print(myRank);
 
     backlog.push(schedule);
 }
@@ -189,19 +191,19 @@ void Worker::HandleEnd() {
     if (myRank != 0)
         MPI_Send(&bestSolution[0], taskCount, MPI_INT, 0, 23, MPI_COMM_WORLD);
     else {
-        std::vector<std::vector<int>> bufik(worldSize, std::vector<int>(taskCount,-2));
+        std::vector<std::vector<int>> bufik(worldSize, std::vector<int>(taskCount, -2));
         bufik[0] = bestSolution;
         MPI_Status status;
 
         for (int i = 1; i < worldSize; ++i) {
-            MPI_Recv(&bufik[i][0], taskCount,MPI_INT,i,23, MPI_COMM_WORLD,&status);
+            MPI_Recv(&bufik[i][0], taskCount, MPI_INT, i, 23, MPI_COMM_WORLD, &status);
         }
 
         int ind = 0;
-        for (const std::vector<int>& cpu : bufik) {
+        for (const std::vector<int> &cpu: bufik) {
             std::cout << "CPU " << ind << ": ";
-            for (int task : cpu) {
-                std::cout << "T" << task+1 << " ";
+            for (int task: cpu) {
+                std::cout << "T" << task + 1 << " ";
             }
             std::cout << std::endl;
             ind++;
