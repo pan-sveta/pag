@@ -14,14 +14,18 @@ int main(int argc, char **argv) {
 
     Worker worker(myRank, worldSize);
 
+
     worker.InitialTasksDistribution(inputPath);
+
 
     //Assign initial jobs
     if (myRank == 0) {
         worker.InitialJobDistribution();
     }
 
+
     worker.WorkingLoop();
+
 
     MPI_Finalize();
 

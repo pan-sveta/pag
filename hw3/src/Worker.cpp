@@ -35,6 +35,9 @@ void Worker::InitialJobDistribution() {
     for (int i = 0; i < taskCount; ++i) {
         int destination = i % worldSize;
 
+        /*
+        SendInitialTask(destination, i);*/
+
         if (destination != 0) {
             SendInitialTask(destination, i);
         } else {
@@ -47,36 +50,33 @@ void Worker::InitialJobDistribution() {
 
 
 void Worker::WorkingLoop() {
-    bool hasWorked = false;
-
-    while (true) {
-        if (backlog.empty()) {
-            //Idling
-            auto receivedSchedule = ReceiveSchedule();
-            Schedule schedule(tasks, receivedSchedule);
-            backlog.push(schedule);
-        } else {
-            //Working
-            hasWorked = true;
-            Schedule top = backlog.top();
-            backlog.pop();
-
-            ProcessSchedule(top);
-        }
+    while (cpuAlive) {
+        if (backlog.empty())
+            Idling();
+        else
+            Work();
 
     }
 }
 
+void Worker::Work() {
+    //Working
+    Schedule top = backlog.top();
+    backlog.pop();
+
+    ProcessSchedule(top);
+}
+
 void Worker::ProcessSchedule(const Schedule &schedule) {
-    std::cout << "Proccessing... ";
-    schedule.print(myRank);
+    //std::cout << "Proccessing... ";
+    //schedule.print(myRank);
 
     if (schedule.validate(UB)) {
         if (schedule.isSolution()) {
             //I have a solution
-            if (schedule.getLength() < UB){
+            if (schedule.getLength() < UB) {
                 UB = schedule.getLength();
-                std::cout << "New UB discovered: " << UB << std::endl;
+                //std::cout << "New UB discovered: " << UB << std::endl;
                 //TODO: Broadcast
             }
 
@@ -95,6 +95,92 @@ void Worker::ProcessSchedule(const Schedule &schedule) {
     }
 }
 
+void Worker::Idling() {
+    HandleTokenPassing();
+
+    MPI_Status status;
+    MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+    switch (status.MPI_TAG) {
+        case MYTAG_SCHEDULE_SEND: {
+            HandleScheduleReceive();
+            break;
+        }
+        case MYTAG_TOKEN_PASSING: {
+            HandleTokenReceive();
+            break;
+        }
+        case MYTAG_END: {
+            HandleEnd();
+            break;
+        }
+    }
+}
+
+void Worker::HandleTokenPassing() {
+    //I am root and I worked
+    if ((myRank == 0) && (worldSize > 1) && !isGreen) {
+        isGreen = true;
+        std::cout << "TOKEN:: " << "CPU " << myRank << " passing green token " << std::endl;
+        PassToken(myRank + 1, GREEN_TOKEN);
+    }
+
+    //I have a token
+    if (token != NO_TOKEN && myRank != 0) {
+        if (isRed) {
+            PassToken((myRank + 1) % worldSize, RED_TOKEN);
+            std::cout << "TOKEN:: " << "CPU " << myRank << " passing red token to " << (myRank + 1) % worldSize
+                      << std::endl;
+        }
+
+        PassToken((myRank + 1) % worldSize, token);
+        std::cout << "TOKEN:: " << "CPU " << myRank << " passing token as is to " << (myRank + 1) % worldSize
+                  << std::endl;
+
+        isGreen = true;
+        token = NO_TOKEN;
+    }
+}
+
+void Worker::HandleTokenReceive() {
+    MPI_Status status;
+    int recToken;
+
+    MPI_Recv(&recToken, 1, MPI_INT, MPI_ANY_SOURCE, MYTAG_TOKEN_PASSING, MPI_COMM_WORLD, &status);
+    if (recToken == GREEN_TOKEN) {
+        std::cout << "TOKEN:: " << "CPU " << myRank << " received green token" << std::endl;
+        token = GREEN_TOKEN;
+    }
+
+    if (recToken == RED_TOKEN) {
+        std::cout << "TOKEN:: " << "CPU " << myRank << " received red token" << std::endl;
+        token = RED_TOKEN;
+    }
+
+    if (myRank == 0) {
+        std::cout << "This is the end " << std::endl;
+        for (int i = 0; i < worldSize; i++) {
+            MPI_Request request;
+            MPI_Isend(nullptr, 0, MPI_INT, i, MYTAG_END, MPI_COMM_WORLD, &request);
+        }
+    }
+}
+
+void Worker::HandleScheduleReceive() {
+    auto receivedSchedule = ReceiveSchedule();
+
+    Schedule schedule(tasks, receivedSchedule);
+
+    //std::cout << "RECEIVED:: On CPU " << myRank << " received ";
+    //schedule.print(myRank);
+
+    backlog.push(schedule);
+}
+
+void Worker::HandleEnd() {
+    std::cout << "DYING:: On CPU " << myRank << " received" << std::endl;
+    cpuAlive = false;
+}
 
 
 

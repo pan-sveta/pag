@@ -8,7 +8,12 @@
 #include <vector>
 
 //Tags
-const int COM_SEND_SCHEDULE = 2;
+const int MYTAG_SCHEDULE_SEND = 2;
+const int MYTAG_TOKEN_PASSING = 4;
+const int MYTAG_END = 6;
+const int RED_TOKEN = 10;
+const int GREEN_TOKEN = 20;
+const int NO_TOKEN = -1;
 
 //Types
 MPI_Datatype CreateMpiTaskType();
@@ -21,6 +26,7 @@ void SendSchedule(const int& destination, const std::vector<int> &schedule);
 void PassToken(const int& destination, int token);
 
 std::vector<int> ReceiveSchedule();
+bool IsScheduleAvailable();
 
 
 #endif //HW3_COMM_H

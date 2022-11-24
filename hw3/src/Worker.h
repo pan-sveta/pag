@@ -8,6 +8,7 @@
 
 #include <stack>
 #include "Schedule.h"
+#include "Comm.h"
 
 class Worker {
 private:
@@ -17,7 +18,13 @@ private:
     int taskCount;
     int UB = INT32_MAX;
     TaskList tasks;
+    bool cpuAlive = true;
+
 public:
+    int token = NO_TOKEN;
+    bool isRed = false;
+    bool isGreen = false;
+
     Worker(const int &myRankInput, const int &worldSizeInput);
 
     void WorkingLoop();
@@ -27,6 +34,18 @@ public:
     void InitialTasksDistribution(const std::string& path);
 
     void ProcessSchedule(const Schedule &schedule);
+
+    void Idling();
+
+    void HandleTokenPassing();
+
+    void HandleTokenReceive();
+
+    void HandleScheduleReceive();
+
+    void HandleEnd();
+
+    void Work();
 };
 
 
