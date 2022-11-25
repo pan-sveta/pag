@@ -6,10 +6,12 @@
 #include "Worker.h"
 #include "Comm.h"
 
-Worker::Worker(const int &myRankInput, const int &worldSizeInput, const std::string& outputPath) {
+Worker::Worker(const int &myRankInput, const int &worldSizeInput, const std::string &outputPath) {
     this->worldSize = worldSizeInput;
     this->myRank = myRankInput;
     this->outputPath = outputPath;
+
+    gen = std::mt19937_64(rd());
 }
 
 void Worker::InitialTasksDistribution(const std::string &path) {
@@ -38,10 +40,6 @@ void Worker::InitialJobDistribution() {
     for (int i = 0; i < taskCount; ++i) {
         int destination = i % worldSize;
 
-        /*
-        SendInitialTask(destination, i);*/
-
-
         Schedule schedule(tasks, i);
 
         if (destination != 0) {
@@ -64,9 +62,15 @@ void Worker::WorkingLoop() {
 }
 
 void Worker::Work() {
-    MPI_Request request;
-    int ubc = UB;
+    firstLoop = true;
+
+    MPI_Status status;
+    int probeFlag;
+    MPI_Iprobe(MPI_ANY_SOURCE, MYTAG_JOB_REQUEST, MPI_COMM_WORLD, &probeFlag, &status);
+
+
     //TODO: CHECK
+    int ubc = UB;
     //MPI_Allreduce(&ubc, &UB, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
     //std::cout << "WORKING" << std::endl;
 
@@ -75,6 +79,35 @@ void Worker::Work() {
     backlog.pop();
 
     ProcessSchedule(top);
+
+
+    if (probeFlag) {
+        MPI_Recv(nullptr, 0, MPI_INT, status.MPI_SOURCE, MYTAG_JOB_REQUEST, MPI_COMM_WORLD, &status);
+
+        if (backlog.empty()) {
+            /*std::cout << "JOB REQUEST DENIED (stack empty): CPU " << myRank << " does not have job for CPU "
+                      << status.MPI_SOURCE << std::endl;*/
+
+            bool res = false;
+            MPI_Send(&res, 1, MPI_CXX_BOOL, status.MPI_SOURCE, MYTAG_JOB_REQUEST_RESPONSE, MPI_COMM_WORLD);
+
+            return;
+        }
+
+        bool res = true;
+        MPI_Send(&res, 1, MPI_CXX_BOOL, status.MPI_SOURCE, MYTAG_JOB_REQUEST_RESPONSE, MPI_COMM_WORLD);
+
+        if (myRank > status.MPI_SOURCE)
+            isRed = true;
+
+        Schedule toSend = backlog.top();
+        backlog.pop();
+//        std::cout << "JOB REQUEST ACCEPTED: from " << myRank << " sending to " << status.MPI_SOURCE << " = ";
+//        toSend.print(myRank);
+
+        SendSchedule(status.MPI_SOURCE, toSend);
+//        std::cout << "JOB SUCCESSFULLY SEND: from " << myRank << " sending to " << status.MPI_SOURCE << std::endl;
+    }
 }
 
 void Worker::ProcessSchedule(const Schedule &schedule) {
@@ -105,74 +138,89 @@ void Worker::ProcessSchedule(const Schedule &schedule) {
 }
 
 void Worker::Idling() {
-    HandleTokenPassing();
+    //std::cout << "IDLE: cpu " << myRank << " is idling" << std::endl;
+    if (myRank == 0 && firstLoop)
+        PassToken((myRank + 1) % worldSize, GREEN_TOKEN);
 
     MPI_Status status;
-    MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+    int flag = 0;
 
-    switch (status.MPI_TAG) {
-        case MYTAG_SCHEDULE_SEND: {
-            HandleScheduleReceive();
-            break;
-        }
-        case MYTAG_TOKEN_PASSING: {
-            HandleTokenReceive();
-            break;
-        }
-        case MYTAG_END: {
-            HandleEnd();
-            break;
-        }
-    }
-}
-
-void Worker::HandleTokenPassing() {
-    //I am root and I worked
-    if ((myRank == 0) && (worldSize > 1) && !isGreen) {
-        isGreen = true;
-        std::cout << "TOKEN:: " << "CPU " << myRank << " passing green token " << std::endl;
-        PassToken(myRank + 1, GREEN_TOKEN);
+    MPI_Iprobe(MPI_ANY_SOURCE, MYTAG_END, MPI_COMM_WORLD, &flag, &status);
+    if (flag) {
+        HandleEnd();
     }
 
-    //I have a token
-    if (token != NO_TOKEN && myRank != 0) {
-        if (isRed) {
-            PassToken((myRank + 1) % worldSize, RED_TOKEN);
-            std::cout << "TOKEN:: " << "CPU " << myRank << " passing red token to " << (myRank + 1) % worldSize
-                      << std::endl;
-        }
-
-        PassToken((myRank + 1) % worldSize, token);
-        std::cout << "TOKEN:: " << "CPU " << myRank << " passing token as is to " << (myRank + 1) % worldSize
-                  << std::endl;
-
-        isGreen = true;
-        token = NO_TOKEN;
+    MPI_Iprobe(MPI_ANY_SOURCE, MYTAG_TOKEN_PASSING, MPI_COMM_WORLD, &flag, &status);
+    if (flag) {
+        HandleTokenReceive();
     }
+
+    MPI_Iprobe(MPI_ANY_SOURCE, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD, &flag, &status);
+    if (flag) {
+        jobRequestPending = false;
+        HandleScheduleReceive();
+    }
+
+    MPI_Iprobe(MPI_ANY_SOURCE, MYTAG_JOB_REQUEST, MPI_COMM_WORLD, &flag, &status);
+    if (flag) {
+        MPI_Recv(nullptr, 0, MPI_INT, status.MPI_SOURCE, MYTAG_JOB_REQUEST, MPI_COMM_WORLD, &status);
+
+        MPI_Request request;
+        bool res = false;
+        MPI_Isend(&res, 1, MPI_CXX_BOOL, status.MPI_SOURCE, MYTAG_JOB_REQUEST_RESPONSE, MPI_COMM_WORLD, &request);
+    }
+
+    MPI_Iprobe(MPI_ANY_SOURCE, MYTAG_JOB_REQUEST_RESPONSE, MPI_COMM_WORLD, &flag, &status);
+    if (flag) {
+        bool res;
+        MPI_Recv(&res, 1, MPI_CXX_BOOL, status.MPI_SOURCE, MYTAG_JOB_REQUEST_RESPONSE, MPI_COMM_WORLD, &status);
+
+
+        /*jobRequestPending = false;
+        if(res){
+            std::cout << myRank << " is sadly waiting dor his promised schedule" << std::endl;
+            auto gift = ReceiveSchedule(tasks);
+            backlog.push(gift);
+            std::cout << myRank << " is happy cause he received his promised schedule" << std::endl;
+            return;
+        }*/
+    }
+
+    if (!jobRequestPending)
+        AskForJob();
+
+    firstLoop = false;
 }
 
 void Worker::HandleTokenReceive() {
     MPI_Status status;
     int recToken;
-
     MPI_Recv(&recToken, 1, MPI_INT, MPI_ANY_SOURCE, MYTAG_TOKEN_PASSING, MPI_COMM_WORLD, &status);
-    if (recToken == GREEN_TOKEN) {
+
+    /*if (recToken == GREEN_TOKEN)
         std::cout << "TOKEN:: " << "CPU " << myRank << " received green token" << std::endl;
-        token = GREEN_TOKEN;
-    }
 
-    if (recToken == RED_TOKEN) {
-        std::cout << "TOKEN:: " << "CPU " << myRank << " received red token" << std::endl;
-        token = RED_TOKEN;
-    }
+    if (recToken == RED_TOKEN)
+        std::cout << "TOKEN:: " << "CPU " << myRank << " received red token" << std::endl;*/
 
-    if (myRank == 0) {
-        std::cout << "This is the end " << std::endl;
-        for (int i = 0; i < worldSize; i++) {
-            MPI_Request request;
-            MPI_Isend(nullptr, 0, MPI_INT, i, MYTAG_END, MPI_COMM_WORLD, &request);
+    if (myRank != 0) {
+        if (isRed)
+            PassToken((myRank + 1) % worldSize, RED_TOKEN);
+        else
+            PassToken((myRank + 1) % worldSize, recToken);
+    } else if (myRank == 0) {
+        if (recToken == GREEN_TOKEN) {
+            std::cout << "This is the end " << std::endl;
+            for (int i = 0; i < worldSize; i++) {
+                //MPI_Request request;
+                MPI_Send(nullptr, 0, MPI_INT, i, MYTAG_END, MPI_COMM_WORLD);
+            }
+        } else {
+            PassToken(1, GREEN_TOKEN);
         }
     }
+
+    isRed = false;
 }
 
 void Worker::HandleScheduleReceive() {
@@ -235,7 +283,7 @@ void Worker::HandleEnd() {
 
 
         //If results not empty process them to feasible solution
-        if(!results.empty()){
+        if (!results.empty()) {
             //Find the one with smallest length
             int smallestIndex = 0;
             int smallestLength = results[0].getLength();
@@ -259,7 +307,7 @@ void Worker::HandleEnd() {
 
             writeFeasible(outputPath, orda);
 
-        } else{
+        } else {
             std::cout << "Infeasible" << std::endl;
             writeInfeasible(outputPath);
         }
@@ -268,6 +316,19 @@ void Worker::HandleEnd() {
     }
 
     cpuAlive = false;
+}
+
+void Worker::AskForJob() {
+    int destination = myRank;
+
+    while (myRank == destination) {
+        destination = dis(gen) % worldSize;
+    }
+
+    MPI_Request request;
+//    std::cout << "JOB REQUEST: " << myRank << " is asking " << destination << " for a job " << std::endl;
+    MPI_Isend(nullptr, 0, MPI_INT, destination, MYTAG_JOB_REQUEST, MPI_COMM_WORLD, &request);
+    jobRequestPending = true;
 }
 
 

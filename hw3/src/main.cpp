@@ -22,6 +22,7 @@ int main(int argc, char **argv) {
     //Assign initial jobs
     if (myRank == 0) {
         worker.InitialJobDistribution();
+        worker.token = GREEN_TOKEN;
     }
 
 

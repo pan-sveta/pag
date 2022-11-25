@@ -10,6 +10,8 @@
 #include "Schedule.h"
 #include "Comm.h"
 #include <optional>
+#include <random>
+
 
 class Worker {
 private:
@@ -25,10 +27,16 @@ private:
     int UB = INT32_MAX;
     std::optional<Schedule> bestSchedule;
 
+    bool firstLoop = true;
+    bool jobRequestPending = false;
+
+    std::random_device rd;
+    std::mt19937_64 gen;
+    std::uniform_int_distribution<int> dis;
+
 public:
     int token = NO_TOKEN;
     bool isRed = false;
-    bool isGreen = false;
 
     Worker(const int &myRankInput, const int &worldSizeInput, const std::string& outputPath);
 
@@ -51,6 +59,8 @@ public:
     void HandleEnd();
 
     void Work();
+
+    void AskForJob();
 };
 
 
