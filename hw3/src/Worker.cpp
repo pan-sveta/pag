@@ -102,11 +102,10 @@ void Worker::Work() {
 
         Schedule toSend = backlog.top();
         backlog.pop();
-//        std::cout << "JOB REQUEST ACCEPTED: from " << myRank << " sending to " << status.MPI_SOURCE << " = ";
-//        toSend.print(myRank);
+        std::cout << "JOB REQUEST ACCEPTED: from " << myRank << " sending to " << status.MPI_SOURCE << " = ";
+        toSend.print(myRank);
 
         SendSchedule(status.MPI_SOURCE, toSend);
-//        std::cout << "JOB SUCCESSFULLY SEND: from " << myRank << " sending to " << status.MPI_SOURCE << std::endl;
     }
 }
 
@@ -114,7 +113,7 @@ void Worker::ProcessSchedule(const Schedule &schedule) {
     //std::cout << "Proccessing... ";
     //schedule.print(myRank);
 
-    if (schedule.validate(UB)) {
+    if (schedule.isValid(UB)) {
         if (schedule.isSolution()) {
             //I have a solution
             if (schedule.getLength() < UB) {
@@ -127,6 +126,10 @@ void Worker::ProcessSchedule(const Schedule &schedule) {
 
         } else {
             //I have to reverse iterate it because of the stack
+            if(schedule.isOptimal()) {
+                backlog = std::stack<Schedule>();
+            }
+
             auto notScheduled = schedule.getNotScheduled();
             for (int i = notScheduled.size() - 1; i > -1; --i) {
                 backlog.push(Schedule(schedule, notScheduled[i]));
@@ -157,7 +160,7 @@ void Worker::Idling() {
 
     MPI_Iprobe(MPI_ANY_SOURCE, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD, &flag, &status);
     if (flag) {
-        jobRequestPending = false;
+        //jobRequestPending = false;
         HandleScheduleReceive();
     }
 
@@ -175,15 +178,14 @@ void Worker::Idling() {
         bool res;
         MPI_Recv(&res, 1, MPI_CXX_BOOL, status.MPI_SOURCE, MYTAG_JOB_REQUEST_RESPONSE, MPI_COMM_WORLD, &status);
 
-
-        /*jobRequestPending = false;
+        jobRequestPending = false;
         if(res){
             std::cout << myRank << " is sadly waiting dor his promised schedule" << std::endl;
             auto gift = ReceiveSchedule(tasks);
             backlog.push(gift);
             std::cout << myRank << " is happy cause he received his promised schedule" << std::endl;
             return;
-        }*/
+        }
     }
 
     if (!jobRequestPending)
@@ -197,11 +199,11 @@ void Worker::HandleTokenReceive() {
     int recToken;
     MPI_Recv(&recToken, 1, MPI_INT, MPI_ANY_SOURCE, MYTAG_TOKEN_PASSING, MPI_COMM_WORLD, &status);
 
-    /*if (recToken == GREEN_TOKEN)
+    if (recToken == GREEN_TOKEN)
         std::cout << "TOKEN:: " << "CPU " << myRank << " received green token" << std::endl;
 
     if (recToken == RED_TOKEN)
-        std::cout << "TOKEN:: " << "CPU " << myRank << " received red token" << std::endl;*/
+        std::cout << "TOKEN:: " << "CPU " << myRank << " received red token" << std::endl;
 
     if (myRank != 0) {
         if (isRed)

@@ -75,7 +75,7 @@ std::vector<const Task *> Schedule::getNotScheduled() const {
     return notScheduled;
 }
 
-bool Schedule::validate(const int &UB) const {
+bool Schedule::isValid(const int &UB) const {
 
     //Missed deadline
     for (auto task: notScheduled) {
@@ -135,6 +135,14 @@ std::vector<int> Schedule::getNotScheduledIndex() const {
         vec.push_back(task->n);
 
     return vec;
+}
+
+bool Schedule::isOptimal() const{
+    int sum = 0;
+    for(auto task : notScheduled)
+        sum += task->releaseTime;
+
+    return length <= sum;
 }
 
 

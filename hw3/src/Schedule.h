@@ -29,8 +29,8 @@ public:
     Schedule(const Schedule &_schedule, const Task *_task);
 
     bool isSolution() const;
-
-    bool validate(const int &UB) const;
+    bool isValid(const int &UB) const;
+    bool isOptimal() const;
 
     void print(const int &myRank) const;
 
@@ -42,7 +42,6 @@ public:
     std::vector<int> getNotScheduledIndex() const;
 
     int getLength() const;
-
 
 };
 
