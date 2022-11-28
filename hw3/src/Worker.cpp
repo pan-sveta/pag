@@ -201,8 +201,8 @@ void Worker::Idling() {
         return;
     }
 
-/*    if (!jobRequestPending)
-        AskForJob();*/
+    if (!jobRequestPending)
+        AskForJob();
 
     firstLoop = false;
 }
@@ -349,12 +349,13 @@ void Worker::HandleIdleJobResponse(int source) {
 
     jobRequestPending = false;
 
-    if (res) {
-//        std::cout << myRank << " is sadly waiting dor his promised schedule" << std::endl;
+    //TODO: Still don't know why this muset be commented out
+    /*if (res) {
+        std::cout << myRank << " is sadly waiting dor his promised schedule" << std::endl;
         auto gift = ReceiveSchedule(tasks);
         backlog.push(gift);
-//        std::cout << myRank << " is happy cause he received his promised schedule" << std::endl;
-    }
+        std::cout << myRank << " is happy cause he received his promised schedule" << std::endl;
+    }*/
 }
 
 void Worker::AskForJob() {
