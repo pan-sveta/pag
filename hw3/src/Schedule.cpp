@@ -138,11 +138,12 @@ std::vector<int> Schedule::getNotScheduledIndex() const {
 }
 
 bool Schedule::isOptimal() const{
-    int sum = 0;
+    int min = INT32_MAX;
     for(auto task : notScheduled)
-        sum += task->releaseTime;
+        if (min > task->releaseTime)
+            min = task->releaseTime;
 
-    return length <= sum;
+    return length <= min;
 }
 
 

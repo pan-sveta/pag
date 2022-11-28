@@ -9,6 +9,7 @@
 #include "Schedule.h"
 
 //Tags
+const int MYTAG_SEND_NEW_UB = 128;
 const int MYTAG_SCHEDULE_SEND = 2;
 const int MYTAG_TOKEN_PASSING = 8;
 const int MYTAG_END = 16;
@@ -28,5 +29,7 @@ void SendSchedule(int destination, Schedule schedule);
 Schedule ReceiveSchedule(const TaskList& taskList);
 
 void PassToken(int destination, int token);
+
+void SendNewUB(int source, int UB);
 
 #endif //HW3_COMM_H

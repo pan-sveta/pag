@@ -16,6 +16,7 @@
 class Worker {
 private:
     std::stack<Schedule> backlog;
+    std::stack<int> assignedRootTasks;
     int myRank;
     int worldSize;
     int taskCount;
@@ -50,17 +51,19 @@ public:
 
     void Idling();
 
-    void HandleTokenPassing();
+    void HandleIdleTokenReceive();
 
-    void HandleTokenReceive();
+    void HandleIdleScheduleReceive();
 
-    void HandleScheduleReceive();
+    void HandleIdleJobRequest(int source);
 
-    void HandleEnd();
+    void HandleIdleEnd();
 
     void Work();
 
     void AskForJob();
+
+    void HandleIdleJobResponse(int i);
 };
 
 

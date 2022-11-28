@@ -81,5 +81,3 @@ void PassToken(int destination, int token) {
     MPI_Send(&token, 1, MPI_INT, destination, MYTAG_TOKEN_PASSING, MPI_COMM_WORLD);
 }
 
-
-
