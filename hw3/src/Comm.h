@@ -11,6 +11,7 @@
 //Tags
 const int MYTAG_SEND_NEW_UB = 128;
 const int MYTAG_SCHEDULE_SEND = 2;
+const int MYTAG_SCHEDULES_SEND = 256;
 const int MYTAG_TOKEN_PASSING = 8;
 const int MYTAG_END = 16;
 const int MYTAG_JOB_REQUEST = 32;
@@ -27,6 +28,9 @@ MPI_Datatype CreateMpiTaskType();
 void SendSchedule(int destination, Schedule schedule);
 
 Schedule ReceiveSchedule(const TaskList& taskList);
+
+void SendSchedules(int destination, std::vector<Schedule> schedules);
+std::vector<Schedule> ReceiveSchedules(const TaskList &taskList);
 
 void PassToken(int destination, int token);
 

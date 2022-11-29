@@ -7,6 +7,65 @@
 
 #include "Schedule.h"
 
+void SendSchedules(int destination, std::vector<Schedule> schedules) {
+    MPI_Request request;
+
+    std::vector<int> message;
+
+    for (const auto &schedule: schedules) {
+        for (auto task: schedule.getScheduledIndex())
+            message.push_back(task);
+
+        message.push_back(-1);
+
+        for (auto task: schedule.getNotScheduledIndex())
+            message.push_back(task);
+
+        message.push_back(-2);
+    }
+
+    MPI_Isend(&message[0], message.size(), MPI_INT, destination, MYTAG_SCHEDULES_SEND, MPI_COMM_WORLD, &request);
+}
+
+
+std::vector<Schedule> ReceiveSchedules(const TaskList &taskList) {
+    MPI_Status status;
+    int number_amount;
+
+//    std::cout << "PROBING" << std::endl;
+    MPI_Probe(MPI_ANY_SOURCE, MYTAG_SCHEDULES_SEND, MPI_COMM_WORLD, &status);
+//    std::cout << "PROBE BIG SUCCESS" << std::endl;
+    MPI_Get_count(&status, MPI_INT, &number_amount);
+    std::vector<int> message(number_amount);
+    MPI_Recv(&message[0], number_amount, MPI_INT, status.MPI_SOURCE, MYTAG_SCHEDULES_SEND, MPI_COMM_WORLD, &status);
+
+//    std::cout << "RRRRRRR " << number_amount << std::endl;
+
+    std::vector<Schedule> schedules(0);
+
+    bool flag = false;
+    std::vector<int> S(0);
+    std::vector<int> N(0);
+
+    for (int n : message) {
+        if (n == -1)
+            flag = true;
+        else if (n == -2) {
+            schedules.emplace_back(taskList, S, N);
+
+            S = std::vector<int>(0);
+            N = std::vector<int>(0);;
+            flag = false;
+        } else if (!flag)
+            S.push_back(n);
+        else
+            N.push_back(n);
+
+        n++;
+    }
+
+    return schedules;
+}
 
 MPI_Datatype CreateMpiTaskType() {
     MPI_Datatype task_type;

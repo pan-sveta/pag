@@ -59,7 +59,7 @@ void Worker::WorkingLoop() {
             int task = assignedRootTasks.top();
             assignedRootTasks.pop();
 
-            backlog.push(Schedule(tasks, task));
+            backlog.emplace_back(tasks, task);
         }
 
         if (backlog.empty())
@@ -95,8 +95,8 @@ void Worker::Work() {
     //std::cout << "WORKING" << std::endl;
 
     //Working
-    Schedule top = backlog.top();
-    backlog.pop();
+    Schedule top = backlog.front();
+    backlog.pop_front();
 
     ProcessSchedule(top);
 
@@ -120,12 +120,14 @@ void Worker::Work() {
         if (myRank > status.MPI_SOURCE)
             isRed = true;
 
-        Schedule toSend = backlog.top();
-        backlog.pop();
+        std::vector<Schedule> toSend(0);
+
+        toSend.push_back(backlog.back());
+        backlog.pop_back();
 //        std::cout << "JOB REQUEST ACCEPTED: from " << myRank << " sending to " << status.MPI_SOURCE << " = ";
 //        toSend.print(myRank);
 
-        SendSchedule(status.MPI_SOURCE, toSend);
+        SendSchedules(status.MPI_SOURCE, toSend);
     }
 }
 
@@ -153,12 +155,11 @@ void Worker::ProcessSchedule(const Schedule &schedule) {
         } else {
             //I have to reverse iterate it because of the stack
             if (schedule.isOptimal()) {
-                backlog = std::stack<Schedule>();
+                backlog = std::deque<Schedule>();
             }
 
-            auto notScheduled = schedule.getNotScheduled();
-            for (int i = notScheduled.size() - 1; i > -1; --i) {
-                backlog.push(Schedule(schedule, notScheduled[i]));
+            for (auto x : schedule.getNotScheduled()) {
+                backlog.push_front(Schedule(schedule, x));
             }
         }
     } else {
@@ -184,7 +185,7 @@ void Worker::Idling() {
         HandleIdleTokenReceive();
     }
 
-    MPI_Iprobe(MPI_ANY_SOURCE, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD, &flag, &status);
+    MPI_Iprobe(MPI_ANY_SOURCE, MYTAG_SCHEDULES_SEND, MPI_COMM_WORLD, &flag, &status);
     if (flag) {
         //jobRequestPending = false;
         HandleIdleScheduleReceive();
@@ -270,7 +271,7 @@ void Worker::HandleIdleEnd() {
             }
 
 //            std::cout << "Final result" << std::endl;
-            results[smallestIndex].print(myRank);
+            //results[smallestIndex].print(myRank);
 
             std::vector<int> orda(taskCount, -69);
 
@@ -309,9 +310,9 @@ void Worker::HandleIdleTokenReceive() {
             PassToken((myRank + 1) % worldSize, RED_TOKEN);
         else
             PassToken((myRank + 1) % worldSize, recToken);
-    } else if (myRank == 0) {
+    } else {
         if (recToken == GREEN_TOKEN) {
-            std::cout << "This is the end " << std::endl;
+            //std::cout << "This is the end " << std::endl;
             for (int i = 0; i < worldSize; i++) {
                 //MPI_Request request;
                 MPI_Send(nullptr, 0, MPI_INT, i, MYTAG_END, MPI_COMM_WORLD);
@@ -325,12 +326,13 @@ void Worker::HandleIdleTokenReceive() {
 }
 
 void Worker::HandleIdleScheduleReceive() {
-    auto schedule = ReceiveSchedule(tasks);
+    auto schedule = ReceiveSchedules(tasks);
 
     //std::cout << "RECEIVED:: On CPU " << myRank << " received ";
     //schedule.print(myRank);
 
-    backlog.push(schedule);
+    for (const auto& x :schedule)
+        backlog.push_back(x);
 }
 
 void Worker::HandleIdleJobRequest(int source) {

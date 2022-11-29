@@ -15,7 +15,7 @@
 
 class Worker {
 private:
-    std::stack<Schedule> backlog;
+    std::deque<Schedule> backlog;
     std::stack<int> assignedRootTasks;
     int myRank;
     int worldSize;
