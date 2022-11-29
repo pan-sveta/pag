@@ -64,7 +64,8 @@ Schedule::Schedule(const Schedule &_schedule, const Task *_task) {
     notScheduled.erase(std::remove(notScheduled.begin(), notScheduled.end(), _task), notScheduled.end());
     scheduled.push_back(_task);
 
-    length = calculateLength();
+    length = std::max(_task->releaseTime, _schedule.length) + _task->processTime;
+    //length = calculateLength();
 }
 
 std::vector<const Task *> Schedule::getScheduled() const {
