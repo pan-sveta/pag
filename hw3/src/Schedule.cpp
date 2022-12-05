@@ -58,11 +58,18 @@ Schedule::Schedule(const TaskList &_taskList, const std::vector<int> &_scheduled
 }
 
 Schedule::Schedule(const Schedule &_schedule, const Task *_task) {
-    scheduled = _schedule.scheduled;
-    notScheduled = _schedule.notScheduled;
+    scheduled = std::vector<const Task *>(_schedule.scheduled.size() + 1);
+    notScheduled = std::vector<const Task *>(_schedule.notScheduled.size() - 1);
 
-    notScheduled.erase(std::remove(notScheduled.begin(), notScheduled.end(), _task), notScheduled.end());
-    scheduled.push_back(_task);
+    std::copy(_schedule.scheduled.begin(), _schedule.scheduled.end(), scheduled.begin());
+    scheduled.back() = _task;
+
+    int i = 0;
+    for (const auto &task: _schedule.notScheduled)
+        if (task != _task) {
+            notScheduled[i] = task;
+            i++;
+        }
 
     length = std::max(_task->releaseTime, _schedule.length) + _task->processTime;
     //length = calculateLength();

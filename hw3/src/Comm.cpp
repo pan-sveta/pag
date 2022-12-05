@@ -4,7 +4,6 @@
 
 #include <mpi.h>
 #include "Comm.h"
-
 #include "Schedule.h"
 
 void SendSchedules(int destination, std::vector<Schedule> schedules) {
@@ -17,11 +16,6 @@ void SendSchedules(int destination, std::vector<Schedule> schedules) {
             message.push_back(task);
 
         message.push_back(-1);
-
-        for (auto task: schedule.getNotScheduledIndex())
-            message.push_back(task);
-
-        message.push_back(-2);
     }
 
     MPI_Isend(&message[0], message.size(), MPI_INT, destination, MYTAG_SCHEDULES_SEND, MPI_COMM_WORLD, &request);
@@ -32,36 +26,33 @@ std::vector<Schedule> ReceiveSchedules(const TaskList &taskList) {
     MPI_Status status;
     int number_amount;
 
-//    std::cout << "PROBING" << std::endl;
     MPI_Probe(MPI_ANY_SOURCE, MYTAG_SCHEDULES_SEND, MPI_COMM_WORLD, &status);
-//    std::cout << "PROBE BIG SUCCESS" << std::endl;
     MPI_Get_count(&status, MPI_INT, &number_amount);
     std::vector<int> message(number_amount);
     MPI_Recv(&message[0], number_amount, MPI_INT, status.MPI_SOURCE, MYTAG_SCHEDULES_SEND, MPI_COMM_WORLD, &status);
 
-//    std::cout << "RRRRRRR " << number_amount << std::endl;
-
     std::vector<Schedule> schedules(0);
 
-    bool flag = false;
     std::vector<int> S(0);
     std::vector<int> N(0);
 
+    std::vector<bool> used(taskList.size(), false);
     for (int n : message) {
-        if (n == -1)
-            flag = true;
-        else if (n == -2) {
-            schedules.emplace_back(taskList, S, N);
+        if (n == -1){
+            for (int i = 0; i < used.size(); ++i)
+                if (!used[i])
+                    N.push_back(i);
 
-            S = std::vector<int>(0);
-            N = std::vector<int>(0);;
-            flag = false;
-        } else if (!flag)
+            schedules.emplace_back(taskList,S,N);
+            S.clear();
+            N.clear();
+
+            std::fill(used.begin(), used.end(), false);
+        }
+        else{
             S.push_back(n);
-        else
-            N.push_back(n);
-
-        n++;
+            used[n] = true;
+        }
     }
 
     return schedules;
