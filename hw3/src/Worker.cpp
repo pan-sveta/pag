@@ -6,10 +6,6 @@
 #include "Worker.h"
 #include "Comm.h"
 
-/*
- * KDyž odstrnaim printy tak to nefunguje, asi to někde visí na komunikaci opět
- * */
-
 Worker::Worker(const int &myRankInput, const int &worldSizeInput, const std::string &outputPath) {
     this->worldSize = worldSizeInput;
     this->myRank = myRankInput;
@@ -54,8 +50,6 @@ void Worker::InitialJobDistribution() {
 void Worker::WorkingLoop() {
     while (cpuAlive) {
         if (backlog.empty() && !assignedRootTasks.empty()) {
-//            std::cout << "BACKLOG EMPTY: On cpu " << myRank << ", taking one from assigned: " << assignedRootTasks.top()
-//                      << std::endl;
             int task = assignedRootTasks.top();
             assignedRootTasks.pop();
 
@@ -79,7 +73,6 @@ void Worker::Work() {
     if (probeFlag) {
         int newUB;
         MPI_Recv(&newUB,1,MPI_INT,status.MPI_SOURCE,MYTAG_SEND_NEW_UB,MPI_COMM_WORLD,&status);
-//        std::cout << "NEW UB Recieved: cpu " << myRank << " received new UB " << newUB << " current is " << UB << std::endl;
 
         if(newUB < UB)
             UB = newUB;
@@ -87,12 +80,6 @@ void Worker::Work() {
 
 
     MPI_Iprobe(MPI_ANY_SOURCE, MYTAG_JOB_REQUEST, MPI_COMM_WORLD, &probeFlag, &status);
-
-
-    //TODO: CHECK
-    int ubc = UB;
-    //MPI_Allreduce(&ubc, &UB, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
-    //std::cout << "WORKING" << std::endl;
 
     //Working
     Schedule top = backlog.front();
@@ -105,9 +92,6 @@ void Worker::Work() {
         MPI_Recv(nullptr, 0, MPI_INT, status.MPI_SOURCE, MYTAG_JOB_REQUEST, MPI_COMM_WORLD, &status);
 
         if (backlog.empty()) {
-            /*std::cout << "JOB REQUEST DENIED (stack empty): CPU " << myRank << " does not have job for CPU "
-                      << status.MPI_SOURCE << std::endl;*/
-
             bool res = false;
             MPI_Send(&res, 1, MPI_CXX_BOOL, status.MPI_SOURCE, MYTAG_JOB_REQUEST_RESPONSE, MPI_COMM_WORLD);
 
@@ -124,8 +108,6 @@ void Worker::Work() {
 
         toSend.push_back(backlog.back());
         backlog.pop_back();
-//        std::cout << "JOB REQUEST ACCEPTED: from " << myRank << " sending to " << status.MPI_SOURCE << " = ";
-//        toSend.print(myRank);
 
         SendSchedules(status.MPI_SOURCE, toSend);
     }
@@ -142,9 +124,6 @@ void Worker::ProcessSchedule(const Schedule &schedule) {
                 UB = schedule.getLength();
                 bestSchedule = schedule;
 
-/*                std::cout << "New solution discovered with ub: " << UB << " sending..." << std::endl;
-                schedule.print(myRank);*/
-
                 for (int i = 0; i < worldSize; ++i) {
                     MPI_Request request;
                     if (i != myRank)
@@ -153,7 +132,6 @@ void Worker::ProcessSchedule(const Schedule &schedule) {
             }
 
         } else {
-            //I have to reverse iterate it because of the stack
             if (schedule.isOptimal()) {
                 backlog = std::deque<Schedule>();
             }
@@ -162,13 +140,10 @@ void Worker::ProcessSchedule(const Schedule &schedule) {
                 backlog.push_front(Schedule(schedule, x));
             }
         }
-    } else {
-        //std::cout << "INVALID!" << std::endl;
     }
 }
 
 void Worker::Idling() {
-    //std::cout << "IDLE: cpu " << myRank << " is idling" << std::endl;
     if (myRank == 0 && firstLoop)
         PassToken((myRank + 1) % worldSize, GREEN_TOKEN);
 
@@ -187,7 +162,6 @@ void Worker::Idling() {
 
     MPI_Iprobe(MPI_ANY_SOURCE, MYTAG_SCHEDULES_SEND, MPI_COMM_WORLD, &flag, &status);
     if (flag) {
-        //jobRequestPending = false;
         HandleIdleScheduleReceive();
     }
 
@@ -209,10 +183,8 @@ void Worker::Idling() {
 }
 
 void Worker::HandleIdleEnd() {
-    //std::cout << "DYING:: On CPU " << myRank << " received" << std::endl;
     MPI_Request request;
 
-    //If not root and has some solution -> send it to root
     if (myRank != 0)
         if (bestSchedule)
             SendSchedule(0, bestSchedule.value());
@@ -270,9 +242,6 @@ void Worker::HandleIdleEnd() {
                 }
             }
 
-//            std::cout << "Final result" << std::endl;
-            //results[smallestIndex].print(myRank);
-
             std::vector<int> orda(taskCount, -69);
 
             int foreo = 0;
@@ -284,7 +253,6 @@ void Worker::HandleIdleEnd() {
             writeFeasible(outputPath, orda);
 
         } else {
-//            std::cout << "Infeasible" << std::endl;
             writeInfeasible(outputPath);
         }
 
@@ -299,12 +267,6 @@ void Worker::HandleIdleTokenReceive() {
     int recToken;
     MPI_Recv(&recToken, 1, MPI_INT, MPI_ANY_SOURCE, MYTAG_TOKEN_PASSING, MPI_COMM_WORLD, &status);
 
-    /*if (recToken == GREEN_TOKEN)
-        std::cout << "TOKEN:: " << "CPU " << myRank << " received green token" << std::endl;
-
-    if (recToken == RED_TOKEN)
-        std::cout << "TOKEN:: " << "CPU " << myRank << " received red token" << std::endl;*/
-
     if (myRank != 0) {
         if (isRed)
             PassToken((myRank + 1) % worldSize, RED_TOKEN);
@@ -312,7 +274,6 @@ void Worker::HandleIdleTokenReceive() {
             PassToken((myRank + 1) % worldSize, recToken);
     } else {
         if (recToken == GREEN_TOKEN) {
-            //std::cout << "This is the end " << std::endl;
             for (int i = 0; i < worldSize; i++) {
                 //MPI_Request request;
                 MPI_Send(nullptr, 0, MPI_INT, i, MYTAG_END, MPI_COMM_WORLD);
@@ -327,9 +288,6 @@ void Worker::HandleIdleTokenReceive() {
 
 void Worker::HandleIdleScheduleReceive() {
     auto schedule = ReceiveSchedules(tasks);
-
-    //std::cout << "RECEIVED:: On CPU " << myRank << " received ";
-    //schedule.print(myRank);
 
     for (const auto& x :schedule)
         backlog.push_back(x);
@@ -368,7 +326,6 @@ void Worker::AskForJob() {
     }
 
     MPI_Request request;
-//    std::cout << "JOB REQUEST: " << myRank << " is asking " << destination << " for a job " << std::endl;
     MPI_Isend(nullptr, 0, MPI_INT, destination, MYTAG_JOB_REQUEST, MPI_COMM_WORLD, &request);
     jobRequestPending = true;
 }

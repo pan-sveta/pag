@@ -103,9 +103,7 @@ Schedule ReceiveSchedule(const TaskList &taskList) {
     MPI_Status status;
     int number_amount;
 
-//    std::cout << "PROBING" << std::endl;
     MPI_Probe(MPI_ANY_SOURCE, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD, &status);
-//    std::cout << "PROBE BIG SUCCESS" << std::endl;
     MPI_Get_count(&status, MPI_INT, &number_amount);
     std::vector<int> message(number_amount);
     MPI_Recv(&message[0], number_amount , MPI_INT, status.MPI_SOURCE, MYTAG_SCHEDULE_SEND, MPI_COMM_WORLD, &status);
@@ -127,7 +125,6 @@ Schedule ReceiveSchedule(const TaskList &taskList) {
 }
 
 void PassToken(int destination, int token) {
-//    std::cout << "TOKEN:: Sending token " << token << " to "<< destination << std::endl;
     MPI_Send(&token, 1, MPI_INT, destination, MYTAG_TOKEN_PASSING, MPI_COMM_WORLD);
 }
 
