@@ -16,7 +16,6 @@ const int MYTAG_TOKEN_PASSING = 8;
 const int MYTAG_END = 16;
 const int MYTAG_JOB_REQUEST = 32;
 const int MYTAG_JOB_REQUEST_RESPONSE = 64;
-const int MYTAG_NEW_OPTIMAL = 512;
 const int RED_TOKEN = 10;
 const int GREEN_TOKEN = 20;
 const int NO_TOKEN = -1;

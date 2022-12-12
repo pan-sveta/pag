@@ -33,11 +33,6 @@ void Worker::InitialTasksDistribution(const std::string &path) {
 
     //Broadcast all tasks
     MPI_Bcast(&tasks[0], tasks.size(), MPITaskType, 0, MPI_COMM_WORLD);
-
-    int m = 0;
-    for (auto task: tasks)
-        m = std::max(m, task.deadline);
-    UB = m + 1;
 }
 
 void Worker::InitialJobDistribution() {
@@ -81,13 +76,6 @@ void Worker::Work() {
 
         if(newUB < UB)
             UB = newUB;
-    }
-
-    MPI_Iprobe(MPI_ANY_SOURCE, MYTAG_NEW_OPTIMAL, MPI_COMM_WORLD, &probeFlag, &status);
-    if (probeFlag) {
-        backlog.clear();
-        assignedRootTasks = std::stack<int>();
-        return;
     }
 
 
@@ -146,12 +134,6 @@ void Worker::ProcessSchedule(const Schedule &schedule) {
         } else {
             if (schedule.isOptimal()) {
                 backlog = std::deque<Schedule>();
-
-                for (int i = 0; i < worldSize; ++i) {
-                    MPI_Request request;
-                    if (i != myRank)
-                        MPI_Isend(nullptr, 0, MPI_INT, i, MYTAG_NEW_OPTIMAL, MPI_COMM_WORLD, &request);
-                }
             }
 
             for (auto x : schedule.getNotScheduled()) {
@@ -307,7 +289,7 @@ void Worker::HandleIdleTokenReceive() {
 void Worker::HandleIdleScheduleReceive() {
     auto schedule = ReceiveSchedules(tasks);
 
-    for (const auto &x: schedule)
+    for (const auto& x :schedule)
         backlog.push_back(x);
 }
 
