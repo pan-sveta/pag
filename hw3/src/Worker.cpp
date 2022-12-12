@@ -5,6 +5,7 @@
 #include <mpi.h>
 #include "Worker.h"
 #include "Comm.h"
+#include "queue"
 
 Worker::Worker(const int &myRankInput, const int &worldSizeInput, const std::string &outputPath) {
     this->worldSize = worldSizeInput;
@@ -77,9 +78,9 @@ void Worker::Work() {
     MPI_Iprobe(MPI_ANY_SOURCE, MYTAG_SEND_NEW_UB, MPI_COMM_WORLD, &probeFlag, &status);
     if (probeFlag) {
         int newUB;
-        MPI_Recv(&newUB,1,MPI_INT,status.MPI_SOURCE,MYTAG_SEND_NEW_UB,MPI_COMM_WORLD,&status);
+        MPI_Recv(&newUB, 1, MPI_INT, status.MPI_SOURCE, MYTAG_SEND_NEW_UB, MPI_COMM_WORLD, &status);
 
-        if(newUB < UB)
+        if (newUB < UB)
             UB = newUB;
     }
 
@@ -154,9 +155,24 @@ void Worker::ProcessSchedule(const Schedule &schedule) {
                 }
             }
 
-            for (auto x : schedule.getNotScheduled()) {
-                backlog.push_front(Schedule(schedule, x));
+            struct CustomCompare
+            {
+                bool operator()(const Schedule& lhs, const Schedule& rhs)
+                {
+                    return lhs.getLength() < rhs.getLength();
+                }
+            };
+
+            std::priority_queue<Schedule,std::vector<Schedule>, CustomCompare > pq;
+            for (auto task: schedule.getNotScheduled()) {
+                pq.push(Schedule(schedule, task));
             }
+
+            while (!pq.empty()){
+                backlog.push_front(pq.top());
+                pq.pop();
+            }
+
         }
     }
 }
